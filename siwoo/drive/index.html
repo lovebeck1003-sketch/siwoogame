@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>무한 드라이브 — 힐링 로드 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1020; }
+  canvas { display: block; }
+
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    font-family: "Malgun Gothic", system-ui, sans-serif;
+    color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.6);
+  }
+  #speed {
+    position: absolute; left: 34px; bottom: 28px;
+    font-size: 54px; font-weight: 700; letter-spacing: -1px; line-height: 1;
+  }
+  #speed span { font-size: 20px; font-weight: 500; opacity: .8; margin-left: 6px; }
+  #info {
+    position: absolute; right: 34px; bottom: 30px; text-align: right;
+    font-size: 15px; line-height: 1.7; opacity: .92;
+  }
+  #info b { font-weight: 700; }
+  #help { position: absolute; left: 34px; top: 26px; font-size: 14px; line-height: 1.85; opacity: .78; }
+  kbd { background: rgba(255,255,255,.16); border-radius: 4px; padding: 1px 6px; font-size: 13px; }
+  #toast {
+    position: absolute; left: 50%; top: 12%; transform: translateX(-50%);
+    font-size: 26px; font-weight: 700; opacity: 0; transition: opacity .4s;
+  }
+  #loading {
+    position: fixed; inset: 0; display: grid; place-content: center;
+    background: #0b1020; color: #dfe6ff; font-family: "Malgun Gothic", sans-serif;
+    font-size: 18px; letter-spacing: 2px; z-index: 10; transition: opacity .6s;
+  }
+</style>
+</head>
+<body>
+<div id="loading">도로를 만드는 중…</div>
+<div id="hud">
+  <div id="help">
+    <kbd>W</kbd>/<kbd>S</kbd> 가속·브레이크 &nbsp; <kbd>A</kbd>/<kbd>D</kbd> 조향 &nbsp; <kbd>Shift</kbd> 부스트 &nbsp; <kbd>Space</kbd> 브레이크<br>
+    <kbd>C</kbd> 시점(1인칭 실내 포함) &nbsp; <kbd>R</kbd> 날씨 &nbsp; <kbd>T</kbd> 시간 배속 &nbsp; <kbd>F</kbd> 헤드라이트 &nbsp; <kbd>H</kbd> UI
+  </div>
+  <div id="speed">0<span>km/h</span></div>
+  <div id="info"></div>
+  <div id="toast"></div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.161.0/build/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ═══════════════════════════════════════════════════════════
+//  바이옴
+// ═══════════════════════════════════════════════════════════
+const BIOMES = [
+  { name: '초원',    ground: 0x7a9f57, rock: 0x8d8d80, hill: 1.0, trees: 0.5,  treeTop: 0x4e7f45, treeH: 1.0, haze: 0xbcd2e6 },
+  { name: '침엽수림', ground: 0x557a4a, rock: 0x74766c, hill: 1.6, trees: 0.95, treeTop: 0x2c5238, treeH: 1.5, haze: 0xaec6dc },
+  { name: '사막',    ground: 0xcbae7c, rock: 0xb1946a, hill: 0.7, trees: 0.07, treeTop: 0x6f7f4c, treeH: 0.7, haze: 0xdcc8a4 },
+  { name: '설원',    ground: 0xdde6ee, rock: 0x949da6, hill: 1.3, trees: 0.38, treeTop: 0x36564b, treeH: 1.2, haze: 0xd0dde9 },
+  { name: '해안',    ground: 0x93ac74, rock: 0xa39d90, hill: 0.55, trees: 0.3, treeTop: 0x517f52, treeH: 1.1, haze: 0xc3dcea },
+];
+const BIOME_LEN = 3400;
+
+function biomeAt(z) {
+  const f = z / BIOME_LEN;
+  const i = Math.floor(f), t = f - i;
+  const n = BIOMES.length;
+  const a = BIOMES[((i % n) + n) % n];
+  const b = BIOMES[(((i + 1) % n) + n) % n];
+  return { a, b, k: t * t * (3 - 2 * t) };
+}
+const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _tmp = new THREE.Color();
+function biomeColor(bl, key, out) {
+  _c1.setHex(bl.a[key]); _c2.setHex(bl.b[key]);
+  return (out || new THREE.Color()).copy(_c1).lerp(_c2, bl.k);
+}
+function biomeNum(bl, key) { return bl.a[key] + (bl.b[key] - bl.a[key]) * bl.k; }
+
+// 해안 바이옴(인덱스 4)이 얼마나 섞여 있는가 → 바다가 나타나는 정도
+function coastFactor(z) {
+  let u = (z / BIOME_LEN) % BIOMES.length;
+  if (u < 0) u += BIOMES.length;
+  let d = Math.abs(u - 4);
+  d = Math.min(d, BIOMES.length - d);        // 순환 거리
+  const t = Math.max(0, 1 - d);
+  return t * t * (3 - 2 * t);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  도로 · 지형 · 바다
+// ═══════════════════════════════════════════════════════════
+const ROAD_HALF = 9, SHOULDER = 16;
+const SEA_DROP = 9;        // 도로면 대비 해수면 깊이
+const SHORE_START = 34;    // 도로 오른쪽 이만큼부터 해변이 시작
+const SHORE_LEN = 80;
+
+const roadX = z => 62 * Math.sin(z * 0.0016) + 26 * Math.sin(z * 0.0043 + 2.1)
+                 + 11 * Math.sin(z * 0.0101 + 0.7);
+const roadY = z => 15 * Math.sin(z * 0.0021 + 0.5) + 6 * Math.sin(z * 0.0057 + 1.9);
+const seaY = z => roadY(z) - SEA_DROP;
+
+function hills(x, z) {
+  return 17 * Math.sin(x * 0.0072) * Math.cos(z * 0.0065)
+       +  7 * Math.sin(x * 0.021 + 1.2) * Math.sin(z * 0.017)
+       +  2.4 * Math.sin(x * 0.061) * Math.sin(z * 0.054);
+}
+const smooth = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+
+function terrainHeight(x, z) {
+  const rX = roadX(z), rY = roadY(z);
+  const d = Math.abs(x - rX);
+  let h;
+  if (d < ROAD_HALF) {
+    h = rY - Math.pow(d / ROAD_HALF, 2) * 0.25;
+  } else {
+    const t = smooth((d - ROAD_HALF) / SHOULDER);
+    h = rY + hills(x, z) * biomeNum(biomeAt(z), 'hill') * t;
+  }
+  // 해안: 도로 오른쪽 지형을 바다로 끌어내린다
+  const c = coastFactor(z);
+  if (c > 0.002) {
+    const sh = smooth((x - rX - SHORE_START) / SHORE_LEN);
+    if (sh > 0) {
+      const bed = rY - 2 - (SEA_DROP + 26) * sh;
+      h = h + (bed - h) * c * sh;
+    }
+  }
+  return h;
+}
+
+const _n = new THREE.Vector3();
+function terrainNormal(x, z) {
+  const e = 1.5;
+  return _n.set(terrainHeight(x - e, z) - terrainHeight(x + e, z), 2 * e,
+                terrainHeight(x, z - e) - terrainHeight(x, z + e)).normalize();
+}
+
+function hash2(i, j) {
+  let h = Math.imul(i, 374761393) ^ Math.imul(j, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  렌더러
+// ═══════════════════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({
+  antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.25;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const FOG_NEAR = 90, FOG_FAR = 1000;
+scene.fog = new THREE.Fog(0xc8dcee, FOG_NEAR, FOG_FAR);
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 5000);
+
+// ── 하늘: 대기 산란 근사 + 구름 + 별 ─────────────────────────
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false,
+  uniforms: {
+    sunDir:   { value: new THREE.Vector3(0, 1, 0) },
+    dayAmt:   { value: 1 },
+    cloud:    { value: 0.35 },
+    time:     { value: 0 },
+    zenith:   { value: new THREE.Color(0x2c63b0) },
+    horizon:  { value: new THREE.Color(0xcfe2f2) },
+  },
+  vertexShader: `varying vec3 vP;
+    void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform vec3 sunDir, zenith, horizon;
+    uniform float dayAmt, cloud, time;
+    varying vec3 vP;
+
+    float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(h21(i), h21(i + vec2(1,0)), f.x),
+                 mix(h21(i + vec2(0,1)), h21(i + vec2(1,1)), f.x), f.y);
+    }
+    float fbm(vec2 p){
+      float v = 0.0, a = 0.5;
+      for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; }
+      return v;
+    }
+
+    void main(){
+      vec3 d = normalize(vP);
+      float h = max(d.y, 0.0);
+      vec3 sd = normalize(sunDir);
+      float mu = max(dot(d, sd), 0.0);
+
+      // 고도에 따른 하늘 — 지평선에서 두꺼운 대기
+      float t = pow(1.0 - h, 3.2);
+      vec3 col = mix(zenith, horizon, t);
+
+      // 태양 주변 전방 산란 (노을이 하늘 절반을 물들인다)
+      float low = smoothstep(0.35, -0.08, sd.y);          // 해가 낮을수록 1
+      vec3 warm = vec3(1.0, 0.45, 0.16);
+      col += warm * pow(mu, 4.0) * (0.35 + low * 1.5) * dayAmt;
+      col += warm * pow(mu, 1.4) * low * 0.35 * t;
+      col = mix(col, vec3(0.95, 0.42, 0.22), low * pow(1.0 - h, 9.0) * 0.75 * dayAmt);
+
+      // 태양 원반 + 헤일로
+      float disc = smoothstep(0.9985, 0.99955, mu);
+      col += vec3(1.0, 0.92, 0.78) * disc * 6.0 * dayAmt;
+      col += vec3(1.0, 0.85, 0.6) * pow(mu, 180.0) * 0.8 * dayAmt;
+
+      // 별
+      float night = 1.0 - dayAmt;
+      if (night > 0.01) {
+        vec2 sp = d.xz / max(abs(d.y), 0.08) * 6.0;
+        float s = h21(floor(sp * 14.0));
+        float star = smoothstep(0.9965, 1.0, s) * smoothstep(0.0, 0.25, d.y);
+        col += vec3(0.9, 0.94, 1.0) * star * night * (0.6 + 0.4 * sin(time * 2.0 + s * 60.0));
+      }
+
+      // 구름층
+      if (d.y > 0.015) {
+        vec2 cp = d.xz / d.y * 0.55 + vec2(time * 0.006, time * 0.0025);
+        float f = fbm(cp * 1.7);
+        float cover = smoothstep(0.62 - cloud * 0.42, 0.92 - cloud * 0.3, f);
+        cover *= smoothstep(0.02, 0.16, d.y);
+        vec3 lit = mix(vec3(0.42, 0.44, 0.5), vec3(1.02, 0.99, 0.96), dayAmt);
+        lit = mix(lit, warm * 1.5, low * dayAmt * 0.75);
+        vec3 shade = mix(vec3(0.16, 0.18, 0.26), vec3(0.55, 0.57, 0.63), dayAmt);
+        float lift = smoothstep(0.5, 1.0, f);
+        col = mix(col, mix(shade, lit, lift), cover * 0.9);
+      }
+
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(2600, 48, 28), skyMat);
+sky.frustumCulled = false;
+scene.add(sky);
+
+const sun = new THREE.DirectionalLight(0xfff2dc, 2.4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 800;
+const SH = 200;
+Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias = -0.0013;
+scene.add(sun, sun.target);
+
+const hemi = new THREE.HemisphereLight(0xbcd8ff, 0x6b6a58, 0.85);
+scene.add(hemi);
+
+// ═══════════════════════════════════════════════════════════
+//  지형 청크
+// ═══════════════════════════════════════════════════════════
+const CS = 150, RES = 34, GRID = 7;
+const chunks = [];
+const groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+
+for (let i = 0; i < GRID * GRID; i++) {
+  const g = new THREE.PlaneGeometry(CS, CS, RES, RES).rotateX(-Math.PI / 2);
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 3), 3));
+  const m = new THREE.Mesh(g, groundMat);
+  m.receiveShadow = true; m.frustumCulled = false;
+  scene.add(m);
+  chunks.push({ mesh: m, cx: null, cz: null });
+}
+
+const _gc = new THREE.Color(), _rc = new THREE.Color();
+const ASPHALT = new THREE.Color(0x2f3036), LINE = new THREE.Color(0xd6d0bd);
+const SAND = new THREE.Color(0xe3d3a8), WET = new THREE.Color(0x9a916f);
+
+function buildChunk(ch, cx, cz) {
+  ch.cx = cx; ch.cz = cz;
+  const ox = cx * CS, oz = cz * CS;
+  ch.mesh.position.set(ox, 0, oz);
+  const pos = ch.mesh.geometry.attributes.position;
+  const col = ch.mesh.geometry.attributes.color;
+
+  for (let i = 0; i < pos.count; i++) {
+    const wx = pos.getX(i) + ox, wz = pos.getZ(i) + oz;
+    const h = terrainHeight(wx, wz);
+    pos.setY(i, h);
+
+    const bl = biomeAt(wz);
+    biomeColor(bl, 'ground', _gc);
+    biomeColor(bl, 'rock', _rc);
+    const d = Math.abs(wx - roadX(wz));
+    const sl = seaY(wz);
+
+    if (d < ROAD_HALF) {
+      _tmp.copy(ASPHALT);
+      const edge = Math.abs(d - (ROAD_HALF - 1.1));
+      const center = d < 0.45 && (((wz % 26) + 26) % 26) < 13;
+      if (edge < 0.42 || center) _tmp.lerp(LINE, 0.88);
+      _tmp.multiplyScalar(0.88 + hash2(Math.round(wx), Math.round(wz)) * 0.24);
+    } else if (d < ROAD_HALF + 2.4) {
+      _tmp.copy(ASPHALT).lerp(_rc, (d - ROAD_HALF) / 2.4);
+    } else {
+      const nrm = terrainNormal(wx, wz);
+      const steep = smooth((1 - nrm.y - 0.1) * 4.5);
+      _tmp.copy(_gc).lerp(_rc, steep);
+      // 해수면 근처는 모래사장, 물속은 젖은 색
+      const above = h - sl;
+      if (above < 9) {
+        const beach = 1 - smooth((above - 1) / 8);
+        _tmp.lerp(SAND, beach * 0.9);
+        if (above < 0) _tmp.lerp(WET, Math.min(1, -above / 6) * 0.7);
+      }
+      _tmp.multiplyScalar(0.92 + hash2(Math.round(wx * 0.7), Math.round(wz * 0.7)) * 0.16);
+    }
+    col.setXYZ(i, _tmp.r, _tmp.g, _tmp.b);
+  }
+  pos.needsUpdate = true; col.needsUpdate = true;
+  ch.mesh.geometry.computeVertexNormals();
+}
+
+function updateChunks(px, pz) {
+  const bx = Math.round(px / CS), bz = Math.round(pz / CS);
+  const half = (GRID - 1) / 2;
+  const want = [];
+  for (let i = -half; i <= half; i++)
+    for (let j = -half; j <= half; j++) want.push([bx + i, bz + j]);
+  const keep = new Set(), free = [];
+  for (const ch of chunks) {
+    const hit = want.find(w => w[0] === ch.cx && w[1] === ch.cz);
+    if (hit) keep.add(hit[0] + ',' + hit[1]); else free.push(ch);
+  }
+  for (const [cx, cz] of want) {
+    if (keep.has(cx + ',' + cz)) continue;
+    const ch = free.pop();
+    if (!ch) break;
+    buildChunk(ch, cx, cz);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  바다 — 도로 공식을 셰이더에서 그대로 계산해 해수면을 만든다
+// ═══════════════════════════════════════════════════════════
+const waterMat = new THREE.ShaderMaterial({
+  transparent: true,
+  uniforms: {
+    time:     { value: 0 },
+    sunDir:   { value: new THREE.Vector3() },
+    sunCol:   { value: new THREE.Color(0xfff0d0) },
+    skyCol:   { value: new THREE.Color(0x9dc4e8) },
+    deepCol:  { value: new THREE.Color(0x0e3550) },
+    shallow:  { value: new THREE.Color(0x2d8ba8) },
+    fogColor: { value: new THREE.Color() },
+    fogNear:  { value: FOG_NEAR },
+    fogFar:   { value: FOG_FAR },
+  },
+  vertexShader: `
+    uniform float time;
+    varying vec3 vW; varying float vC; varying float vWave;
+
+    float roadYf(float z){ return 15.0*sin(z*0.0021+0.5) + 6.0*sin(z*0.0057+1.9); }
+    float coastF(float z){
+      float u = mod(z / 3400.0, 5.0);
+      float d = abs(u - 4.0);
+      d = min(d, 5.0 - d);
+      float t = clamp(1.0 - d, 0.0, 1.0);
+      return t * t * (3.0 - 2.0 * t);
+    }
+
+    void main(){
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      float base = roadYf(wp.z) - 9.0;
+      float w = sin(wp.x * 0.055 + time * 1.1) * 0.34
+              + sin(wp.z * 0.043 - time * 0.9) * 0.42
+              + sin((wp.x + wp.z) * 0.021 + time * 0.55) * 0.55
+              + sin(wp.x * 0.13 - time * 1.9) * 0.12;
+      wp.y = base + w;
+      vW = wp.xyz; vC = coastF(wp.z); vWave = w;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }`,
+  fragmentShader: `
+    uniform vec3 sunDir, sunCol, skyCol, deepCol, shallow, fogColor;
+    uniform float fogNear, fogFar, time;
+    varying vec3 vW; varying float vC; varying float vWave;
+
+    void main(){
+      if (vC < 0.02) discard;
+      vec3 dx = dFdx(vW), dy = dFdy(vW);
+      vec3 n = normalize(cross(dy, dx));
+      if (n.y < 0.0) n = -n;
+      vec3 v = normalize(cameraPosition - vW);
+      float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+
+      vec3 col = mix(deepCol, shallow, clamp(vWave * 0.6 + 0.5, 0.0, 1.0) * 0.5);
+      col = mix(col, skyCol, 0.25 + fres * 0.65);
+
+      vec3 sd = normalize(sunDir);
+      vec3 h = normalize(sd + v);
+      col += sunCol * pow(max(dot(n, h), 0.0), 220.0) * 2.2;         // 반짝임
+      float glit = pow(max(dot(n, h), 0.0), 30.0) * max(sd.y + 0.15, 0.0);
+      col += sunCol * glit * 0.35;
+
+      float dist = length(cameraPosition - vW);
+      float f = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+      col = mix(col, fogColor, f);
+
+      gl_FragColor = vec4(col, vC * (0.86 + fres * 0.14));
+    }`,
+});
+const waterGeo = new THREE.PlaneGeometry(2600, 2600, 190, 190).rotateX(-Math.PI / 2);
+const water = new THREE.Mesh(waterGeo, waterMat);
+water.frustumCulled = false;
+water.renderOrder = 1;
+scene.add(water);
+
+// ═══════════════════════════════════════════════════════════
+//  나무 · 바위 · 가드레일
+// ═══════════════════════════════════════════════════════════
+const TREE_MAX = 950, ROCK_MAX = 280, POST_MAX = 240;
+const trunkGeo = new THREE.CylinderGeometry(0.32, 0.5, 4, 5).translate(0, 2, 0);
+const leafGeo = new THREE.ConeGeometry(2.6, 8, 7).translate(0, 7.4, 0);
+const rockGeo = new THREE.DodecahedronGeometry(1.6, 0);
+const postGeo = new THREE.BoxGeometry(0.14, 1.15, 0.14).translate(0, 0.58, 0);
+const railGeo = new THREE.BoxGeometry(0.09, 0.3, 4.2).translate(0, 0.92, 0);
+
+const mkInst = (geo, mat, n) => {
+  const m = new THREE.InstancedMesh(geo, mat, n);
+  m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+  scene.add(m); return m;
+};
+const trunks = mkInst(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5f4b3a }), TREE_MAX);
+const leaves = mkInst(leafGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), TREE_MAX);
+const rocks  = mkInst(rockGeo, new THREE.MeshLambertMaterial({ color: 0x8d8d84 }), ROCK_MAX);
+const posts  = mkInst(postGeo, new THREE.MeshLambertMaterial({ color: 0x9a9a96 }), POST_MAX);
+const rails  = mkInst(railGeo, new THREE.MeshStandardMaterial({
+  color: 0xb9bcbd, roughness: 0.45, metalness: 0.6 }), POST_MAX);
+leaves.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(TREE_MAX * 3), 3);
+
+const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion();
+const _pos = new THREE.Vector3(), _scl = new THREE.Vector3(), _axis = new THREE.Vector3(0, 1, 0);
+const CELL = 22, SCAT_R = 18;
+let scatterKey = '';
+
+function scatter(px, pz) {
+  const bx = Math.round(px / CELL), bz = Math.round(pz / CELL);
+  const key = bx + ',' + bz;
+  if (key === scatterKey) return;
+  scatterKey = key;
+
+  let ti = 0, ri = 0;
+  for (let i = -SCAT_R; i <= SCAT_R; i++) {
+    for (let j = -SCAT_R; j <= SCAT_R; j++) {
+      if (i * i + j * j > SCAT_R * SCAT_R) continue;
+      const gx = bx + i, gz = bz + j;
+      const r = hash2(gx, gz);
+      const wx = gx * CELL + (hash2(gx + 7331, gz) - 0.5) * CELL * 0.9;
+      const wz = gz * CELL + (hash2(gx, gz + 7331) - 0.5) * CELL * 0.9;
+      const d = Math.abs(wx - roadX(wz));
+      if (d < ROAD_HALF + 6) continue;
+      const y = terrainHeight(wx, wz);
+      if (y < seaY(wz) + 1.2) continue;              // 물속엔 심지 않는다
+
+      const bl = biomeAt(wz);
+      const dens = biomeNum(bl, 'trees') * Math.min(1, (d - ROAD_HALF) / 30 + 0.35);
+      if (r < dens && ti < TREE_MAX) {
+        const s = (0.7 + hash2(gx + 13, gz + 91) * 0.85) * biomeNum(bl, 'treeH');
+        _pos.set(wx, y - 0.4, wz);
+        _q.setFromAxisAngle(_axis, r * 9.4);
+        _scl.set(s, s * (0.85 + r * 0.45), s);
+        _m4.compose(_pos, _q, _scl);
+        trunks.setMatrixAt(ti, _m4); leaves.setMatrixAt(ti, _m4);
+        biomeColor(bl, 'treeTop', _tmp).multiplyScalar(0.8 + hash2(gz, gx) * 0.4);
+        leaves.setColorAt(ti, _tmp);
+        ti++;
+      } else if (r > 0.945 && ri < ROCK_MAX) {
+        const s = 0.6 + hash2(gx + 55, gz + 21) * 2.0;
+        _pos.set(wx, y + s * 0.3, wz);
+        _q.setFromEuler(new THREE.Euler(r * 6, r * 3, r * 2));
+        _scl.set(s, s * 0.8, s);
+        _m4.compose(_pos, _q, _scl);
+        rocks.setMatrixAt(ri, _m4);
+        ri++;
+      }
+    }
+  }
+  _m4.makeScale(0, 0, 0);
+  for (let k = ti; k < TREE_MAX; k++) { trunks.setMatrixAt(k, _m4); leaves.setMatrixAt(k, _m4); }
+  for (let k = ri; k < ROCK_MAX; k++) rocks.setMatrixAt(k, _m4);
+  trunks.instanceMatrix.needsUpdate = true;
+  leaves.instanceMatrix.needsUpdate = true;
+  leaves.instanceColor.needsUpdate = true;
+  rocks.instanceMatrix.needsUpdate = true;
+}
+
+// 가드레일 — 바다·낭떠러지 쪽 갓길에 세운다
+const RAIL_STEP = 4.2;
+let railKey = null;
+function guardrails(pz) {
+  const b = Math.round(pz / RAIL_STEP);
+  if (b === railKey) return;
+  railKey = b;
+  let k = 0;
+  for (let i = -POST_MAX / 2; i < POST_MAX / 2 && k < POST_MAX; i++) {
+    const wz = (b + i) * RAIL_STEP;
+    const side = 1;                                    // 오른쪽(바다 쪽)
+    const wx = roadX(wz) + side * (ROAD_HALF + 1.6);
+    const outer = terrainHeight(wx + side * 8, wz);
+    const here = terrainHeight(wx, wz);
+    const needs = coastFactor(wz) > 0.25 || here - outer > 4.5;   // 바다이거나 급경사
+    if (!needs) continue;
+    _pos.set(wx, here, wz);
+    const ang = Math.atan2(roadX(wz + 3) - roadX(wz - 3), 6);
+    _q.setFromAxisAngle(_axis, ang);
+    _scl.set(1, 1, 1);
+    _m4.compose(_pos, _q, _scl);
+    posts.setMatrixAt(k, _m4); rails.setMatrixAt(k, _m4);
+    k++;
+  }
+  _m4.makeScale(0, 0, 0);
+  for (let i = k; i < POST_MAX; i++) { posts.setMatrixAt(i, _m4); rails.setMatrixAt(i, _m4); }
+  posts.instanceMatrix.needsUpdate = true;
+  rails.instanceMatrix.needsUpdate = true;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  차량 (외장 + 실내)
+// ═══════════════════════════════════════════════════════════
+const CARS = [
+  { name: '스포츠', color: 0xc9453c, len: 4.5, w: 1.95, h: 1.1, top: 74, acc: 40, grip: 1.15 },
+];
+
+const carRoot = new THREE.Group();
+scene.add(carRoot);
+let carBody = null, interior = null, headlights = [], brakeMats = [], dashMats = [];
+let steerWheel = null, eyePoint = new THREE.Vector3();
+
+function buildCar(spec) {
+  if (carBody) carRoot.remove(carBody);
+  if (interior) carRoot.remove(interior);
+  headlights.forEach(h => carRoot.remove(h, h.target));
+  headlights = []; brakeMats = []; dashMats = [];
+
+  const g = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.32, metalness: 0.35 });
+  const trim  = new THREE.MeshStandardMaterial({ color: 0x1e1f24, roughness: 0.65, metalness: 0.2 });
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0x8fb6cf, roughness: 0.06, metalness: 0.0,
+    transparent: true, opacity: 0.28, transmission: 0.0, side: THREE.DoubleSide });
+  const lamp  = new THREE.MeshStandardMaterial({ color: 0xfff6dd, emissive: 0xfff0c8, emissiveIntensity: 1.2 });
+
+  const wheelR = spec.h * 0.33;
+  const bodyY = wheelR + spec.h * 0.3;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(spec.w, spec.h * 0.56, spec.len), paint);
+  body.position.y = bodyY;
+  const cabinH = spec.h * 0.5, cabinY = bodyY + spec.h * 0.28 + cabinH / 2;
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.9, cabinH, spec.len * 0.52), glass);
+  cabin.position.set(0, cabinY, -spec.len * 0.04);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.9, 0.07, spec.len * 0.4), paint);
+  roof.position.set(0, cabinY + cabinH / 2, -spec.len * 0.08);
+  const skirt = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 1.01, spec.h * 0.16, spec.len * 0.86), trim);
+  skirt.position.y = bodyY - spec.h * 0.3;
+  g.add(body, cabin, roof, skirt);
+
+  for (const sx of [-1, 1]) {
+    const l = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.1), lamp);
+    l.position.set(sx * spec.w * 0.32, bodyY + 0.05, spec.len * 0.5);
+    g.add(l);
+    const sp = new THREE.SpotLight(0xfff0cc, 0, 150, 0.5, 0.6, 1.4);
+    sp.position.set(sx * spec.w * 0.32, bodyY, spec.len * 0.5);
+    sp.target.position.set(sx * 3, -2.4, 34);
+    carRoot.add(sp, sp.target);
+    headlights.push(sp);
+
+    const bm = new THREE.MeshStandardMaterial({ color: 0x6d1a14, emissive: 0xff2a12, emissiveIntensity: 0.35 });
+    brakeMats.push(bm);
+    const t = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.08), bm);
+    t.position.set(sx * spec.w * 0.32, bodyY + 0.08, -spec.len * 0.5);
+    g.add(t);
+
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.11, 0.09), trim);
+    mirror.position.set(sx * spec.w * 0.56, cabinY, spec.len * 0.15);
+    g.add(mirror);
+  }
+
+  const wg = new THREE.CylinderGeometry(wheelR, wheelR, 0.34, 16).rotateZ(Math.PI / 2);
+  const rimG = new THREE.CylinderGeometry(wheelR * 0.55, wheelR * 0.55, 0.36, 10).rotateZ(Math.PI / 2);
+  const tyre = new THREE.MeshStandardMaterial({ color: 0x16171a, roughness: 0.92 });
+  const rim  = new THREE.MeshStandardMaterial({ color: 0xa8adb2, roughness: 0.3, metalness: 0.85 });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const w = new THREE.Mesh(wg, tyre);
+    w.position.set(sx * spec.w * 0.5, wheelR, sz * spec.len * 0.32);
+    w.add(new THREE.Mesh(rimG, rim));
+    g.add(w);
+  }
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  carRoot.add(g);
+  carBody = g;
+
+  // ── 실내 (1인칭에서만 보인다)
+  const inte = new THREE.Group();
+  const plastic = new THREE.MeshStandardMaterial({ color: 0x2a2c31, roughness: 0.85 });
+  const seatMat = new THREE.MeshStandardMaterial({ color: 0x3a3138, roughness: 0.95 });
+  const dashGlow = new THREE.MeshStandardMaterial({ color: 0x101216, roughness: 0.6,
+    emissive: 0x4fd6c8, emissiveIntensity: 0.0 });
+  dashMats.push(dashGlow);
+
+  const dashY = bodyY + spec.h * 0.2;
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.88, 0.3, 0.62), plastic);
+  dash.position.set(0, dashY, spec.len * 0.19);
+  const cluster = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.06), dashGlow);
+  cluster.position.set(-spec.w * 0.24, dashY + 0.13, spec.len * 0.19 - 0.3);
+  cluster.rotation.x = 0.35;
+  const centerScr = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.24, 0.05), dashGlow);
+  centerScr.position.set(spec.w * 0.1, dashY + 0.16, spec.len * 0.19 - 0.28);
+  centerScr.rotation.x = 0.2;
+  inte.add(dash, cluster, centerScr);
+
+  steerWheel = new THREE.Group();
+  const rimW = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.024, 8, 24), plastic);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.05, 10).rotateX(Math.PI / 2), plastic);
+  for (const a of [0, 2.1, 4.2]) {
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.022, 0.02), plastic);
+    spoke.position.set(Math.cos(a) * 0.085, Math.sin(a) * 0.085, 0);
+    spoke.rotation.z = a;
+    steerWheel.add(spoke);
+  }
+  steerWheel.add(rimW, hub);
+  steerWheel.position.set(-spec.w * 0.24, dashY + 0.16, spec.len * 0.19 - 0.42);
+  steerWheel.rotation.x = -0.42;
+  inte.add(steerWheel);
+
+  // A필러 · 도어 · 루프 라이닝
+  for (const sx of [-1, 1]) {
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.1, cabinH * 1.25, 0.12), plastic);
+    pillar.position.set(sx * spec.w * 0.42, cabinY - 0.03, spec.len * 0.24);
+    pillar.rotation.x = -0.42;
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.5, spec.len * 0.5), plastic);
+    door.position.set(sx * spec.w * 0.44, bodyY + 0.16, 0);
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.16), seatMat);
+    seat.position.set(sx * spec.w * 0.24, bodyY + 0.3, -spec.len * 0.14);
+    seat.rotation.x = -0.12;
+    inte.add(pillar, door, seat);
+  }
+  const lining = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.86, 0.05, spec.len * 0.46), plastic);
+  lining.position.set(0, cabinY + cabinH / 2 - 0.05, -spec.len * 0.06);
+  const rearMirror = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.04), plastic);
+  rearMirror.position.set(0, cabinY + cabinH / 2 - 0.14, spec.len * 0.2);
+  inte.add(lining, rearMirror);
+
+  carRoot.add(inte);
+  interior = inte;
+
+  // 운전석 눈높이
+  eyePoint.set(-spec.w * 0.24, cabinY + 0.02, spec.len * 0.19 - 0.75);
+}
+
+let carIdx = 0;
+buildCar(CARS[0]);
+
+// ═══════════════════════════════════════════════════════════
+//  날씨
+// ═══════════════════════════════════════════════════════════
+const WEATHER = [
+  { name: '맑음', fogMul: 1.0,  rain: 0, light: 1.0,  grip: 1.0,  cloud: 0.22 },
+  { name: '흐림', fogMul: 0.6,  rain: 0, light: 0.6,  grip: 0.96, cloud: 0.78 },
+  { name: '비',   fogMul: 0.36, rain: 1, light: 0.42, grip: 0.76, cloud: 0.95 },
+  { name: '안개', fogMul: 0.16, rain: 0, light: 0.55, grip: 0.9,  cloud: 0.5  },
+];
+let weatherIdx = 0;
+const wMix = { fogMul: 1, rain: 0, light: 1, grip: 1, cloud: 0.22 };
+
+const RAIN_N = 4500;
+const rainGeo = new THREE.BufferGeometry();
+const rainPos = new Float32Array(RAIN_N * 3);
+for (let i = 0; i < RAIN_N; i++) {
+  rainPos[i * 3] = (Math.random() - 0.5) * 240;
+  rainPos[i * 3 + 1] = Math.random() * 95;
+  rainPos[i * 3 + 2] = (Math.random() - 0.5) * 240;
+}
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rain = new THREE.Points(rainGeo, new THREE.PointsMaterial({
+  color: 0xc4d8e8, size: 0.45, transparent: true, opacity: 0, depthWrite: false }));
+rain.frustumCulled = false;
+scene.add(rain);
+
+// ═══════════════════════════════════════════════════════════
+//  입력
+// ═══════════════════════════════════════════════════════════
+const keys = {};
+let camMode = 0, timeScale = 1, hudOn = true, lightsManual = null;
+const CAM_NAMES = ['체이스', '1인칭 실내', '시네마틱'];
+
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.repeat) return;
+  if (e.code === 'KeyC') { camMode = (camMode + 1) % 3; toast('시점 · ' + CAM_NAMES[camMode]); }
+  if (e.code === 'KeyR') { weatherIdx = (weatherIdx + 1) % WEATHER.length; toast('날씨 · ' + WEATHER[weatherIdx].name); }
+  if (e.code === 'KeyT') { timeScale = timeScale === 1 ? 12 : timeScale === 12 ? 60 : 1; toast('시간 ×' + timeScale); }
+  if (e.code === 'KeyF') { lightsManual = lightsManual === null ? true : lightsManual ? false : null;
+    toast('헤드라이트 · ' + (lightsManual === null ? '자동' : lightsManual ? '켬' : '끔')); }
+  if (e.code === 'KeyH') { hudOn = !hudOn; document.getElementById('hud').style.display = hudOn ? '' : 'none'; }
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+});
+addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const toastEl = document.getElementById('toast');
+let toastT = 0;
+function toast(msg) { toastEl.textContent = msg; toastEl.style.opacity = 1; toastT = 1.6; }
+
+// ═══════════════════════════════════════════════════════════
+//  루프
+// ═══════════════════════════════════════════════════════════
+const car = { x: roadX(0), z: 0, y: 0, heading: 0, speed: 0, steer: 0, spin: 0 };
+let dayTime = 10.0;                 // 환한 오전에서 시작
+const camPos = new THREE.Vector3(0, 20, -30), camLook = new THREE.Vector3();
+const _fwd = new THREE.Vector3(), _right = new THREE.Vector3(), _up = new THREE.Vector3();
+const _basis = new THREE.Matrix4();
+const zenith = new THREE.Color(), horizon = new THREE.Color(), fogCol = new THREE.Color();
+const sunDir = new THREE.Vector3();
+const DAY_ZEN = new THREE.Color(0x2f6bb8), DAY_HOR = new THREE.Color(0xd3e5f4);
+const NIGHT_ZEN = new THREE.Color(0x141d40), NIGHT_HOR = new THREE.Color(0x35446e);
+const DUSK_HOR = new THREE.Color(0xff8a4a), GREY = new THREE.Color(0x8b9099);
+
+updateChunks(car.x, car.z);
+scatter(car.x, car.z);
+guardrails(car.z);
+document.getElementById('loading').style.opacity = 0;
+setTimeout(() => document.getElementById('loading')?.remove(), 700);
+
+const speedEl = document.getElementById('speed');
+const infoEl = document.getElementById('info');
+const clock = new THREE.Clock();
+let elapsed = 0;
+
+function loop() {
+  requestAnimationFrame(loop);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  elapsed += dt;
+  const spec = CARS[carIdx];
+
+  const w = WEATHER[weatherIdx];
+  for (const k in wMix) wMix[k] += (w[k] - wMix[k]) * Math.min(1, dt * 0.7);
+
+  // ── 조작 · 물리
+  const boost = keys.ShiftLeft || keys.ShiftRight;
+  let throttle = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+  const steerIn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0);
+
+  const offRoad = Math.abs(car.x - roadX(car.z)) > ROAD_HALF;
+  const inWater = car.y < seaY(car.z) + 0.6;
+  const topSpeed = spec.top * (boost ? 1.45 : 1) * (offRoad ? 0.62 : 1) * (inWater ? 0.25 : 1);
+  const gripNow = spec.grip * wMix.grip * (offRoad ? 0.72 : 1);
+
+  car.speed += throttle * spec.acc * (throttle > 0 ? 1 : 1.4) * dt;
+  car.speed *= Math.pow(inWater ? 0.25 : offRoad ? 0.55 : 0.86, dt);
+  const braking = keys.Space || (throttle < 0 && car.speed > 1);
+  if (keys.Space) car.speed *= Math.pow(0.12, dt);
+  car.speed = Math.max(-topSpeed * 0.35, Math.min(topSpeed, car.speed));
+
+  const steerTarget = steerIn * Math.min(1, 26 / (Math.abs(car.speed) + 12));
+  car.steer += (steerTarget - car.steer) * Math.min(1, dt * 7);
+  car.heading += car.steer * car.speed * 0.055 * gripNow * dt;
+  car.x += Math.sin(car.heading) * car.speed * dt;
+  car.z += Math.cos(car.heading) * car.speed * dt;
+  car.spin += car.speed * dt * 0.6;
+
+  const gy = terrainHeight(car.x, car.z);
+  car.y += (gy - car.y) * Math.min(1, dt * 12);
+  const rumble = offRoad ? Math.sin(car.spin * 9) * 0.05 * Math.min(1, Math.abs(car.speed) / 20) : 0;
+  carRoot.position.set(car.x, car.y + rumble, car.z);
+
+  const nrm = terrainNormal(car.x, car.z);
+  _up.copy(nrm);
+  _fwd.set(Math.sin(car.heading), 0, Math.cos(car.heading));
+  _fwd.addScaledVector(_up, -_fwd.dot(_up)).normalize();
+  _right.crossVectors(_up, _fwd).normalize();
+  carRoot.quaternion.setFromRotationMatrix(_basis.makeBasis(_right, _up, _fwd));
+  carRoot.rotateZ(-car.steer * Math.min(0.1, Math.abs(car.speed) * 0.0022));
+  if (steerWheel) steerWheel.rotation.z = car.steer * 2.6;
+  brakeMats.forEach(m => m.emissiveIntensity += ((braking ? 2.4 : 0.35) - m.emissiveIntensity) * Math.min(1, dt * 12));
+
+  updateChunks(car.x, car.z);
+  scatter(car.x, car.z);
+  guardrails(car.z);
+
+  // ── 시간 · 하늘 · 빛
+  dayTime = (dayTime + dt * timeScale * 0.05) % 24;
+  const ang = (dayTime / 24) * Math.PI * 2 - Math.PI / 2;
+  sunDir.set(Math.cos(ang) * 0.35, Math.sin(ang), Math.cos(ang) * 0.92).normalize();
+  const day = smooth(sunDir.y * 3.2 + 0.12);
+  const dusk = Math.max(0, 1 - Math.abs(sunDir.y) * 5.5);
+  const grey = 0.45 + 0.55 * wMix.light;      // 흐려도 너무 어두워지지 않게
+
+  zenith.copy(DAY_ZEN).lerp(NIGHT_ZEN, 1 - day).lerp(GREY, (1 - grey) * 0.7 * day);
+  horizon.copy(DAY_HOR).lerp(NIGHT_HOR, 1 - day)
+    .lerp(DUSK_HOR, dusk * 0.75 * day).lerp(GREY, (1 - grey) * 0.7 * day);
+
+  skyMat.uniforms.zenith.value.copy(zenith);
+  skyMat.uniforms.horizon.value.copy(horizon);
+  skyMat.uniforms.sunDir.value.copy(sunDir);
+  skyMat.uniforms.dayAmt.value = day * (0.35 + 0.65 * grey);
+  skyMat.uniforms.cloud.value = wMix.cloud;
+  skyMat.uniforms.time.value = elapsed;
+
+  const bl = biomeAt(car.z);
+  biomeColor(bl, 'haze', fogCol);
+  fogCol.lerp(NIGHT_HOR, 1 - day).lerp(DUSK_HOR, dusk * 0.55 * day).lerp(GREY, (1 - grey) * 0.6 * day);
+  scene.fog.color.copy(fogCol);
+  scene.fog.far = FOG_NEAR + (FOG_FAR - FOG_NEAR) * wMix.fogMul;
+  renderer.setClearColor(fogCol);
+
+  // 밤에는 달빛이 반대편에서 은은하게 든다
+  sun.intensity = 2.9 * day * grey + 0.5 * (1 - day);
+  sun.color.setRGB(1, 0.92 - dusk * 0.22, 0.84 - dusk * 0.42).lerp(_c1.setRGB(0.66, 0.76, 1), 1 - day);
+  sun.position.copy(sunDir).multiplyScalar(day > 0.05 ? 340 : -340).add(carRoot.position);
+  sun.target.position.copy(carRoot.position);
+  hemi.intensity = 0.75 + 0.85 * day * grey;
+  hemi.color.copy(horizon);
+  hemi.groundColor.copy(fogCol).multiplyScalar(0.35);
+
+  const autoOn = day < 0.42 || grey < 0.55;
+  const wantHL = (lightsManual === null ? autoOn : lightsManual) ? 4.0 : 0;
+  headlights.forEach(s => s.intensity += (wantHL - s.intensity) * Math.min(1, dt * 3));
+  dashMats.forEach(m => m.emissiveIntensity += ((1 - day) * 1.4 + 0.15 - m.emissiveIntensity) * Math.min(1, dt * 2));
+
+  // ── 바다
+  const coast = coastFactor(car.z);
+  water.visible = coast > 0.02;
+  if (water.visible) {
+    water.position.set(Math.round(car.x / 40) * 40, 0, Math.round(car.z / 40) * 40);
+    waterMat.uniforms.time.value = elapsed;
+    waterMat.uniforms.sunDir.value.copy(sunDir);
+    waterMat.uniforms.sunCol.value.copy(sun.color).multiplyScalar(0.4 + day * 1.6 * grey);
+    waterMat.uniforms.skyCol.value.copy(horizon).lerp(zenith, 0.35);
+    waterMat.uniforms.fogColor.value.copy(fogCol);
+    waterMat.uniforms.fogFar.value = scene.fog.far;
+  }
+
+  // ── 비
+  rain.material.opacity = wMix.rain * 0.5;
+  if (wMix.rain > 0.01) {
+    rain.position.set(car.x, car.y, car.z);
+    const p = rainGeo.attributes.position;
+    for (let i = 0; i < RAIN_N; i++) {
+      let y = p.getY(i) - dt * 95;
+      if (y < 0) { y += 95; p.setX(i, (Math.random() - 0.5) * 240); p.setZ(i, (Math.random() - 0.5) * 240); }
+      p.setY(i, y);
+    }
+    p.needsUpdate = true;
+  }
+
+  // ── 카메라
+  const sp = Math.abs(car.speed);
+  interior.visible = camMode === 1;
+  if (camMode !== 1) camera.up.set(0, 1, 0);
+
+  if (camMode === 0) {
+    const back = 9.5 + sp * 0.12, up = 3.6 + sp * 0.02;
+    camPos.lerp(_pos.set(car.x - Math.sin(car.heading) * back, car.y + up,
+      car.z - Math.cos(car.heading) * back), Math.min(1, dt * 3.6));
+    camPos.y = Math.max(camPos.y, terrainHeight(camPos.x, camPos.z) + 1.6);
+    camLook.lerp(_pos.set(car.x + Math.sin(car.heading) * 14, car.y + 1.6,
+      car.z + Math.cos(car.heading) * 14), Math.min(1, dt * 5));
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+  } else if (camMode === 1) {
+    camera.position.copy(eyePoint).applyMatrix4(carRoot.matrixWorld);
+    camera.up.copy(_up);
+    camera.lookAt(_pos.copy(eyePoint).setZ(eyePoint.z + 30).setX(eyePoint.x + car.steer * 3)
+      .applyMatrix4(carRoot.matrixWorld));
+  } else {
+    const t = elapsed * 0.13;
+    camPos.lerp(_pos.set(car.x + Math.sin(t) * 27, car.y + 9 + Math.sin(t * 2.3) * 3,
+      car.z + Math.cos(t) * 27), Math.min(1, dt * 1.4));
+    camPos.y = Math.max(camPos.y, terrainHeight(camPos.x, camPos.z) + 3);
+    camera.position.copy(camPos);
+    camera.lookAt(car.x, car.y + 1, car.z);
+  }
+  camera.fov = (camMode === 1 ? 70 : 62) + Math.min(11, sp * 0.15) * (boost ? 1.4 : 1);
+  camera.updateProjectionMatrix();
+  sky.position.copy(camera.position);
+
+  // ── HUD
+  if (hudOn) {
+    speedEl.innerHTML = Math.round(sp * 3.6) + '<span>km/h</span>';
+    const hh = Math.floor(dayTime), mm = Math.floor((dayTime % 1) * 60);
+    const bname = bl.k < 0.5 ? bl.a.name : bl.b.name;
+    infoEl.innerHTML =
+      `<b>${bname}</b>${coast > 0.35 ? ' · 🌊 바다' : ''} · ${WEATHER[weatherIdx].name}<br>` +
+      `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · 시간 ×${timeScale}<br>` +
+      `${spec.name} · ${(Math.abs(car.z) / 1000).toFixed(1)} km` +
+      (inWater ? '<br><span style="color:#8fd8ff">물속</span>'
+        : offRoad ? '<br><span style="color:#ffd08a">오프로드</span>' : '');
+    if (toastT > 0 && (toastT -= dt) <= 0) toastEl.style.opacity = 0;
+  }
+
+  renderer.render(scene, camera);
+}
+loop();
+</script>
+</body>
+</html>
