@@ -59,12 +59,13 @@ import * as THREE from 'three';
 // ═══════════════════════════════════════════════════════════
 //  바이옴
 // ═══════════════════════════════════════════════════════════
+// grass = 풀 밀도, conif = 침엽수 비율(나머지는 활엽수)
 const BIOMES = [
-  { name: '초원',    ground: 0x7a9f57, rock: 0x8d8d80, hill: 1.0, trees: 0.5,  treeTop: 0x4e7f45, treeH: 1.0, haze: 0xbcd2e6 },
-  { name: '침엽수림', ground: 0x557a4a, rock: 0x74766c, hill: 1.6, trees: 0.95, treeTop: 0x2c5238, treeH: 1.5, haze: 0xaec6dc },
-  { name: '사막',    ground: 0xcbae7c, rock: 0xb1946a, hill: 0.7, trees: 0.07, treeTop: 0x6f7f4c, treeH: 0.7, haze: 0xdcc8a4 },
-  { name: '설원',    ground: 0xdde6ee, rock: 0x949da6, hill: 1.3, trees: 0.38, treeTop: 0x36564b, treeH: 1.2, haze: 0xd0dde9 },
-  { name: '해안',    ground: 0x93ac74, rock: 0xa39d90, hill: 0.55, trees: 0.3, treeTop: 0x517f52, treeH: 1.1, haze: 0xc3dcea },
+  { name: '초원',    ground: 0x7a9f57, rock: 0x8d8d80, hill: 1.0, trees: 0.5,  treeTop: 0x4e7f45, treeH: 1.0, haze: 0xbcd2e6, grass: 1.0,  conif: 0.15 },
+  { name: '침엽수림', ground: 0x557a4a, rock: 0x74766c, hill: 1.6, trees: 0.95, treeTop: 0x2c5238, treeH: 1.5, haze: 0xaec6dc, grass: 0.55, conif: 0.9  },
+  { name: '사막',    ground: 0xcbae7c, rock: 0xb1946a, hill: 0.7, trees: 0.07, treeTop: 0x6f7f4c, treeH: 0.7, haze: 0xdcc8a4, grass: 0.10, conif: 0.0  },
+  { name: '설원',    ground: 0xdde6ee, rock: 0x949da6, hill: 1.3, trees: 0.38, treeTop: 0x36564b, treeH: 1.2, haze: 0xd0dde9, grass: 0.22, conif: 0.85 },
+  { name: '해안',    ground: 0x93ac74, rock: 0xa39d90, hill: 0.55, trees: 0.3, treeTop: 0x517f52, treeH: 1.1, haze: 0xc3dcea, grass: 0.7,  conif: 0.2  },
 ];
 const BIOME_LEN = 3400;
 
@@ -77,6 +78,7 @@ function biomeAt(z) {
   return { a, b, k: t * t * (3 - 2 * t) };
 }
 const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _tmp = new THREE.Color();
+const WHITE = new THREE.Color(1, 1, 1);
 function biomeColor(bl, key, out) {
   _c1.setHex(bl.a[key]); _c2.setHex(bl.b[key]);
   return (out || new THREE.Color()).copy(_c1).lerp(_c2, bl.k);
@@ -116,12 +118,13 @@ const smooth = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t
 function terrainHeight(x, z) {
   const rX = roadX(z), rY = roadY(z);
   const d = Math.abs(x - rX);
-  let h;
-  if (d < ROAD_HALF) {
-    h = rY - Math.pow(d / ROAD_HALF, 2) * 0.25;
-  } else {
+  // 노면 캠버(가운데가 볼록). 예전엔 도로 안쪽만 깎아서 d=ROAD_HALF 에서 25cm 단차가 났고,
+  // 그게 도로 가장자리가 잘려 보이던 원인이었다. 갓길까지 같은 값을 빼서 연속으로 잇는다.
+  const cd = Math.min(d, ROAD_HALF) / ROAD_HALF;
+  let h = rY - cd * cd * 0.25;
+  if (d > ROAD_HALF) {
     const t = smooth((d - ROAD_HALF) / SHOULDER);
-    h = rY + hills(x, z) * biomeNum(biomeAt(z), 'hill') * t;
+    h += hills(x, z) * biomeNum(biomeAt(z), 'hill') * t;
   }
   // 해안: 도로 오른쪽 지형을 바다로 끌어내린다
   const c = coastFactor(z);
@@ -153,12 +156,12 @@ function hash2(i, j) {
 // ═══════════════════════════════════════════════════════════
 const renderer = new THREE.WebGLRenderer({
   antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.25;
+renderer.toneMappingExposure = 1.12;      // 밝은 낮에 하늘이 하얗게 타버리지 않게 살짝 낮춘다
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -252,21 +255,49 @@ const sun = new THREE.DirectionalLight(0xfff2dc, 2.4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 800;
-const SH = 200;
+// 범위를 좁혀 같은 2048 맵으로 훨씬 촘촘한 그림자를 얻는다 (차·나무가 또렷해진다)
+const SH = 110;
 Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
 sun.shadow.camera.updateProjectionMatrix();
-sun.shadow.bias = -0.0013;
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.35;      // 잎·풀 같은 얇은 면에서 생기는 얼룩(그림자 여드름) 방지
 scene.add(sun, sun.target);
 
-const hemi = new THREE.HemisphereLight(0xbcd8ff, 0x6b6a58, 0.85);
+// 하늘빛(위) + 땅에서 튄 빛(아래). 그늘이 새까매지지 않게 받쳐 주는 역할이다.
+const hemi = new THREE.HemisphereLight(0xbcd8ff, 0x8a8468, 1.15);
 scene.add(hemi);
+// 태양 반대편에서 아주 약하게 채워 넣는 빛 — 그림자 속 형태가 죽지 않는다
+const fill = new THREE.DirectionalLight(0xdce9ff, 0.35);
+scene.add(fill, fill.target);      // target 도 씬에 넣어야 차가 멀리 가도 방향이 유지된다
+
+// ── 환경 반사: 하늘 셰이더를 그대로 큐브맵으로 구워 쓴다.
+//    외부 HDRI 를 받지 않고도 차체·젖은 노면에 지금 시각·날씨의 하늘이 비친다.
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+let envRT = null, envAt = -99;
+function updateEnv() {
+  const keep = sky.position.clone();
+  sky.position.set(0, 0, 0);        // PMREM 은 원점에서 굽는다
+  envScene.add(sky);                // 잠시 옮겼다가
+  let rt = null;
+  // far 기본값(100)으로는 반지름 2600 짜리 하늘 구가 통째로 잘린다
+  try { rt = pmrem.fromScene(envScene, 0.02, 1, 4000); } catch (e) { /* 반사는 없어도 게임은 돈다 */ }
+  scene.add(sky);                   // 원래 씬으로 되돌린다
+  sky.position.copy(keep);
+  if (!rt) return;
+  if (envRT) envRT.dispose();
+  envRT = rt;
+  scene.environment = rt.texture;
+}
 
 // ═══════════════════════════════════════════════════════════
 //  지형 청크
 // ═══════════════════════════════════════════════════════════
-const CS = 150, RES = 34, GRID = 7;
+const CS = 150, RES = 46, GRID = 7;
 const chunks = [];
-const groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+// 도로와 같은 Standard 계열로 맞춰야 땅·노면·차가 한 화면에서 따로 놀지 않는다
+const groundMat = new THREE.MeshStandardMaterial({
+  vertexColors: true, roughness: 0.95, metalness: 0.0, envMapIntensity: 0.35 });
 
 for (let i = 0; i < GRID * GRID; i++) {
   const g = new THREE.PlaneGeometry(CS, CS, RES, RES).rotateX(-Math.PI / 2);
@@ -278,7 +309,8 @@ for (let i = 0; i < GRID * GRID; i++) {
 }
 
 const _gc = new THREE.Color(), _rc = new THREE.Color();
-const ASPHALT = new THREE.Color(0x2f3036), LINE = new THREE.Color(0xd6d0bd);
+const ASPHALT = new THREE.Color(0x3a3b41), DIRT = new THREE.Color(0x6b5c46);
+const SHOULDER_W = 3.4;                    // 도로 밖 흙 갓길 폭 — roadMesh 가 여기까지 덮는다
 const SAND = new THREE.Color(0xe3d3a8), WET = new THREE.Color(0x9a916f);
 
 function buildChunk(ch, cx, cz) {
@@ -299,14 +331,13 @@ function buildChunk(ch, cx, cz) {
     const d = Math.abs(wx - roadX(wz));
     const sl = seaY(wz);
 
-    if (d < ROAD_HALF) {
-      _tmp.copy(ASPHALT);
-      const edge = Math.abs(d - (ROAD_HALF - 1.1));
-      const center = d < 0.45 && (((wz % 26) + 26) % 26) < 13;
-      if (edge < 0.42 || center) _tmp.lerp(LINE, 0.88);
-      _tmp.multiplyScalar(0.88 + hash2(Math.round(wx), Math.round(wz)) * 0.24);
-    } else if (d < ROAD_HALF + 2.4) {
-      _tmp.copy(ASPHALT).lerp(_rc, (d - ROAD_HALF) / 2.4);
+    if (d < ROAD_HALF + SHOULDER_W) {
+      // 노면·차선·갓길은 roadMesh 가 픽셀 단위로 덮는다. 여기는 그 아래 바탕이라
+      // roadMesh 와 같은 순서(아스팔트 → 흙 → 땅)로 칠해 두 메시의 경계가 안 보이게 한다.
+      const t = smooth((d - (ROAD_HALF - 0.3)) / (SHOULDER_W + 0.3));
+      _tmp.copy(ASPHALT).lerp(DIRT, Math.min(1, t * 1.5));
+      if (t > 0.7) _tmp.lerp(_gc, (t - 0.7) / 0.3);
+      _tmp.multiplyScalar(0.9 + hash2(Math.round(wx), Math.round(wz)) * 0.2);
     } else {
       const nrm = terrainNormal(wx, wz);
       const steep = smooth((1 - nrm.y - 0.1) * 4.5);
@@ -423,25 +454,234 @@ scene.add(water);
 // ═══════════════════════════════════════════════════════════
 //  나무 · 바위 · 가드레일
 // ═══════════════════════════════════════════════════════════
-const TREE_MAX = 950, ROCK_MAX = 280, POST_MAX = 240;
-const trunkGeo = new THREE.CylinderGeometry(0.32, 0.5, 4, 5).translate(0, 2, 0);
-const leafGeo = new THREE.ConeGeometry(2.6, 8, 7).translate(0, 7.4, 0);
-const rockGeo = new THREE.DodecahedronGeometry(1.6, 0);
+// ── 캔버스로 잎·솔잎·풀 텍스처를 그린다 (외부 이미지 없이 알파 있는 텍스처를 얻는다)
+function makeCanvasTex(size, draw) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  draw(cv.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();   // 비스듬히 볼 때 뭉개짐 방지
+  t.minFilter = THREE.LinearMipmapLinearFilter;              // 멀리서 지글대는 걸 막는다
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
+  return t;
+}
+
+const leafTex = makeCanvasTex(256, (g, s) => {
+  // 어두운 잎을 먼저 깔고 밝은 잎을 위에 얹어, 한 장 안에서 명암이 생기게 한다
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < 120; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.pow(Math.random(), 0.62) * s * 0.46;       // 가운데가 빽빽하게
+      const lw = s * 0.05 * (0.7 + Math.random() * 0.7), lh = lw * 1.8;
+      // 1패스는 그늘진 속잎, 2패스는 햇빛 받는 겉잎
+      const lum = pass === 0 ? 0.55 + Math.random() * 0.25
+                             : 1.05 + Math.random() * 0.45 - (r / s) * 0.35;
+      g.save();
+      g.translate(s / 2 + Math.cos(a) * r, s / 2 + Math.sin(a) * r);
+      g.rotate(Math.random() * Math.PI);
+      g.fillStyle = `rgb(${Math.min(255, Math.round(92 * lum))},${Math.min(255, Math.round(158 * lum))},${Math.min(255, Math.round(72 * lum))})`;
+      g.beginPath(); g.ellipse(0, 0, lw, lh, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+  }
+});
+
+const needleTex = makeCanvasTex(256, (g, s) => {
+  g.lineCap = 'round';
+  for (let b = 0; b < 8; b++) {
+    const by = s * (0.06 + b * 0.125);
+    const len = s * 0.44 * (1 - b * 0.085);
+    g.strokeStyle = '#4a3b2a'; g.lineWidth = s * 0.013;
+    for (const side of [-1, 1]) {
+      g.beginPath(); g.moveTo(s / 2, by); g.lineTo(s / 2 + side * len, by + s * 0.035); g.stroke();
+    }
+    for (let i = 0; i < 30; i++) {                              // 가지에 붙은 솔잎
+      const t = i / 30, side = i % 2 ? 1 : -1;
+      const x = s / 2 + side * len * t, y = by + s * 0.035 * t;
+      const lum = 0.75 + Math.random() * 0.6;
+      g.strokeStyle = `rgb(${Math.min(255, Math.round(74 * lum))},${Math.min(255, Math.round(128 * lum))},${Math.min(255, Math.round(78 * lum))})`;
+      g.lineWidth = s * 0.0085;
+      g.beginPath(); g.moveTo(x, y);
+      g.lineTo(x + side * s * 0.032 * (0.5 + Math.random()), y + s * 0.055 * (0.5 + Math.random()));
+      g.stroke();
+    }
+  }
+});
+
+const grassTex = makeCanvasTex(128, (g, s) => {
+  // 뾰족한 바늘이 아니라 폭이 있고 끝이 둥근 잎. 밝은 연두~초록 사이에서 고른다.
+  for (let i = 0; i < 26; i++) {
+    const x0 = s * (0.04 + Math.random() * 0.92);
+    const h = s * (0.40 + Math.random() * 0.50);
+    const bend = (Math.random() - 0.5) * s * 0.42;      // 휘는 정도를 크게
+    const w = s * 0.075 * (0.7 + Math.random() * 0.9);  // 두툼하게
+    const lum = 0.78 + Math.random() * 0.42;
+    g.fillStyle = `rgb(${Math.min(255, Math.round(126 * lum))},${Math.min(255, Math.round(178 * lum))},${Math.min(255, Math.round(84 * lum))})`;
+    g.beginPath();
+    g.moveTo(x0 - w, s);
+    g.quadraticCurveTo(x0 - w * 0.75 + bend * 0.5, s - h * 0.6, x0 + bend - w * 0.22, s - h);
+    g.quadraticCurveTo(x0 + bend, s - h - w * 0.5, x0 + bend + w * 0.22, s - h);  // 둥근 끝
+    g.quadraticCurveTo(x0 + w * 0.75 + bend * 0.5, s - h * 0.6, x0 + w, s);
+    g.closePath(); g.fill();
+  }
+});
+
+// ── 지오메트리 합치기 (addon 없이 draw call 을 줄인다)
+function mergeGeos(list) {
+  const geos = list.map(g => g.index ? g.toNonIndexed() : g);
+  let n = 0;
+  for (const g of geos) n += g.attributes.position.count;
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+  let o = 0;
+  for (const g of geos) {
+    pos.set(g.attributes.position.array, o * 3);
+    if (g.attributes.normal) nor.set(g.attributes.normal.array, o * 3);
+    if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
+    o += g.attributes.position.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return out;
+}
+
+// 나무마다 모양이 달라 보이되 새로고침해도 같도록 고정 시드를 쓴다
+let _seed = 20260812;
+const rnd = () => ((_seed = (Math.imul(_seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+
+// 잎 뭉치 = 텍스처 붙인 판때기 여러 장을 엇갈리게 세운 것.
+// 원뿔 한 덩이보다 훨씬 가볍고, 실루엣에 잎 모양이 살아난다.
+function cardCluster(n, o) {
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const g = new THREE.PlaneGeometry(o.w * (0.75 + rnd() * 0.5), o.h * (0.75 + rnd() * 0.5));
+    g.rotateX((rnd() - 0.5) * o.tilt);
+    g.rotateZ((rnd() - 0.5) * o.tilt);
+    g.rotateY(rnd() * Math.PI * 2);
+    const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * o.spread;
+    g.translate(Math.cos(a) * r, o.y + (rnd() - 0.5) * o.ySpread, Math.sin(a) * r);
+    parts.push(g);
+  }
+  return mergeGeos(parts);
+}
+
+const CONIF_MAX = 620, BROAD_MAX = 620, ROCK_MAX = 280, POST_MAX = 240, GRASS_MAX = 2600;
+
+// 활엽수 줄기 — 원줄기에 잔가지 4개를 붙여 합친다
+const trunkBroadGeo = mergeGeos([
+  new THREE.CylinderGeometry(0.24, 0.56, 5.4, 7).translate(0, 2.7, 0),
+  ...[0, 1.7, 3.3, 4.9].map((a, i) => new THREE.CylinderGeometry(0.07, 0.15, 2.7, 5)
+    .translate(0, 1.35, 0)
+    .rotateZ(0.75 + (i % 2) * 0.18)
+    .rotateY(a)
+    .translate(0, 3.6 + i * 0.42, 0)),
+]);
+const trunkConifGeo = new THREE.CylinderGeometry(0.14, 0.52, 8.2, 7).translate(0, 4.1, 0);
+
+// ── 잎·풀은 수직 판이라 위에서 오는 햇빛과 법선이 직각이 되어 새까맣게 나온다.
+//    법선을 실제 면이 아니라 "덩어리의 바깥쪽"으로 바꿔 줘야 빛을 제대로 받는다.
+function sphereNormals(geo, cy, k) {
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.set(p.getX(i), p.getY(i) - cy, p.getZ(i)).normalize();          // 수관 중심에서 바깥으로
+    n.setXYZ(i,
+      n.getX(i) * (1 - k) + v.x * k,
+      n.getY(i) * (1 - k) + (v.y * 0.5 + 0.5) * k,                    // 위쪽으로 살짝 들어올린다
+      n.getZ(i) * (1 - k) + v.z * k);
+  }
+  const a = geo.attributes.normal;
+  for (let i = 0; i < a.count; i++) {
+    v.set(a.getX(i), a.getY(i), a.getZ(i)).normalize();
+    a.setXYZ(i, v.x, v.y, v.z);
+  }
+  return geo;
+}
+function upNormals(geo) {
+  const n = geo.attributes.normal;
+  for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);             // 잔디는 땅처럼 하늘을 본다
+  return geo;
+}
+
+const broadGeo = sphereNormals(
+  cardCluster(8, { w: 4.6, h: 4.0, y: 6.4, spread: 1.5, ySpread: 1.7, tilt: 0.9 }), 6.4, 0.85);
+const conifGeo = sphereNormals(
+  cardCluster(7, { w: 3.5, h: 5.4, y: 6.2, spread: 0.85, ySpread: 3.4, tilt: 0.5 }), 6.2, 0.8);
+
+const grassGeo = upNormals(mergeGeos([0, 1, 2].map(i => new THREE.PlaneGeometry(0.95, 0.62)
+  .translate(0, 0.31, 0).rotateY(i * Math.PI / 3 + rnd() * 0.5))));
+
+// 바위 — 정12면체를 그대로 쓰면 너무 규칙적이라 정점을 흩어 놓는다
+const rockGeo = new THREE.DodecahedronGeometry(1.6, 1);
+{
+  const p = rockGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const d = 0.74 + hash2(Math.round(x * 41), Math.round(y * 67 + z * 31)) * 0.52;
+    p.setXYZ(i, x * d, y * d * 0.78, z * d);
+  }
+  rockGeo.computeVertexNormals();
+}
+
 const postGeo = new THREE.BoxGeometry(0.14, 1.15, 0.14).translate(0, 0.58, 0);
 const railGeo = new THREE.BoxGeometry(0.09, 0.3, 4.2).translate(0, 0.92, 0);
+
+// ── 바람: 밑동은 고정되고 위로 갈수록 흔들린다
+const windU = { uTime: { value: 0 } };
+function addWind(mat, amount) {
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = windU.uTime;
+    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `
+      #include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec3 iw = instanceMatrix[3].xyz;
+      #else
+        vec3 iw = vec3(0.0);
+      #endif
+      float sw = max(transformed.y, 0.0) * ${amount.toFixed(4)};
+      float ph = uTime * 1.7 + iw.x * 0.31 + iw.z * 0.24;
+      transformed.x += sin(ph) * sw;
+      transformed.z += cos(ph * 0.81) * sw * 0.6;
+    `);
+  };
+}
 
 const mkInst = (geo, mat, n) => {
   const m = new THREE.InstancedMesh(geo, mat, n);
   m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
   scene.add(m); return m;
 };
-const trunks = mkInst(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5f4b3a }), TREE_MAX);
-const leaves = mkInst(leafGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), TREE_MAX);
-const rocks  = mkInst(rockGeo, new THREE.MeshLambertMaterial({ color: 0x8d8d84 }), ROCK_MAX);
-const posts  = mkInst(postGeo, new THREE.MeshLambertMaterial({ color: 0x9a9a96 }), POST_MAX);
-const rails  = mkInst(railGeo, new THREE.MeshStandardMaterial({
+
+const barkMat = new THREE.MeshLambertMaterial({ color: 0x6b543f });
+// alphaTest 로 잘라내면 반투명 정렬 문제가 없고 그림자도 잎 모양대로 진다.
+// alphaToCoverage 를 켜면 MSAA 를 써서 잘린 가장자리의 계단 현상이 크게 줄어든다.
+const broadLeafMat = new THREE.MeshLambertMaterial({
+  map: leafTex, alphaTest: 0.42, side: THREE.DoubleSide, alphaToCoverage: true });
+const conifLeafMat = new THREE.MeshLambertMaterial({
+  map: needleTex, alphaTest: 0.38, side: THREE.DoubleSide, alphaToCoverage: true });
+const grassMat = new THREE.MeshLambertMaterial({
+  map: grassTex, alphaTest: 0.38, side: THREE.DoubleSide, alphaToCoverage: true });
+addWind(broadLeafMat, 0.010);
+addWind(conifLeafMat, 0.006);
+addWind(grassMat, 0.055);
+
+const trunksB = mkInst(trunkBroadGeo, barkMat, BROAD_MAX);
+const leavesB = mkInst(broadGeo, broadLeafMat, BROAD_MAX);
+const trunksC = mkInst(trunkConifGeo, barkMat, CONIF_MAX);
+const leavesC = mkInst(conifGeo, conifLeafMat, CONIF_MAX);
+const rocks   = mkInst(rockGeo, new THREE.MeshLambertMaterial({ color: 0x8d8d84, flatShading: true }), ROCK_MAX);
+const posts   = mkInst(postGeo, new THREE.MeshLambertMaterial({ color: 0x9a9a96 }), POST_MAX);
+const rails   = mkInst(railGeo, new THREE.MeshStandardMaterial({
   color: 0xb9bcbd, roughness: 0.45, metalness: 0.6 }), POST_MAX);
-leaves.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(TREE_MAX * 3), 3);
+const grass   = mkInst(grassGeo, grassMat, GRASS_MAX);
+grass.castShadow = false;              // 풀 그림자는 안 보이는데 값만 비싸다
+
+for (const m of [leavesB, leavesC, grass])
+  m.instanceColor = new THREE.InstancedBufferAttribute(
+    new Float32Array(m.count * 3), 3);
 
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion();
 const _pos = new THREE.Vector3(), _scl = new THREE.Vector3(), _axis = new THREE.Vector3(0, 1, 0);
@@ -454,10 +694,16 @@ function scatter(px, pz) {
   if (key === scatterKey) return;
   scatterKey = key;
 
-  let ti = 0, ri = 0;
+  let ci = 0, bi = 0, ri = 0;
   for (let i = -SCAT_R; i <= SCAT_R; i++) {
     for (let j = -SCAT_R; j <= SCAT_R; j++) {
-      if (i * i + j * j > SCAT_R * SCAT_R) continue;
+      const dd2 = i * i + j * j;
+      if (dd2 > SCAT_R * SCAT_R) continue;
+      // ── LOD: 가장 바깥 나무는 성기게·작게 → 멀리서 검은 점처럼 지글대는 걸 막는다
+      const dn = Math.sqrt(dd2) / SCAT_R;
+      const tFade = 1 - smooth((dn - 0.82) / 0.18);
+      if (tFade <= 0.05) continue;
+
       const gx = bx + i, gz = bz + j;
       const r = hash2(gx, gz);
       const wx = gx * CELL + (hash2(gx + 7331, gz) - 0.5) * CELL * 0.9;
@@ -468,17 +714,29 @@ function scatter(px, pz) {
       if (y < seaY(wz) + 1.2) continue;              // 물속엔 심지 않는다
 
       const bl = biomeAt(wz);
-      const dens = biomeNum(bl, 'trees') * Math.min(1, (d - ROAD_HALF) / 30 + 0.35);
-      if (r < dens && ti < TREE_MAX) {
-        const s = (0.7 + hash2(gx + 13, gz + 91) * 0.85) * biomeNum(bl, 'treeH');
+      const dens = biomeNum(bl, 'trees') * Math.min(1, (d - ROAD_HALF) / 30 + 0.35)
+                 * (1 - dn * 0.25);        // 멀수록 성기게
+      if (r < dens) {
+        const conif = hash2(gx + 301, gz + 77) < biomeNum(bl, 'conif');
+        const trunkM = conif ? trunksC : trunksB;
+        const leafM  = conif ? leavesC : leavesB;
+        const idx    = conif ? ci : bi;
+        if (idx >= (conif ? CONIF_MAX : BROAD_MAX)) continue;
+
+        const s = (0.7 + hash2(gx + 13, gz + 91) * 0.85) * biomeNum(bl, 'treeH') * tFade;
+        // 폭·키를 따로 흩어 같은 나무가 반복돼 보이지 않게 한다
+        const wv = 0.82 + hash2(gx + 401, gz + 17) * 0.4;
+        const dv = 0.82 + hash2(gx + 19, gz + 503) * 0.4;
         _pos.set(wx, y - 0.4, wz);
         _q.setFromAxisAngle(_axis, r * 9.4);
-        _scl.set(s, s * (0.85 + r * 0.45), s);
+        _scl.set(s * wv, s * (0.78 + r * 0.6), s * dv);
         _m4.compose(_pos, _q, _scl);
-        trunks.setMatrixAt(ti, _m4); leaves.setMatrixAt(ti, _m4);
-        biomeColor(bl, 'treeTop', _tmp).multiplyScalar(0.8 + hash2(gz, gx) * 0.4);
-        leaves.setColorAt(ti, _tmp);
-        ti++;
+        trunkM.setMatrixAt(idx, _m4); leafM.setMatrixAt(idx, _m4);
+        // 텍스처가 이미 초록이라 바이옴 색은 옅게만 얹고, 나무마다 밝기를 흩는다
+        biomeColor(bl, 'treeTop', _tmp).lerp(WHITE, 0.52)
+          .multiplyScalar(0.84 + hash2(gz, gx) * 0.46);
+        leafM.setColorAt(idx, _tmp);
+        if (conif) ci++; else bi++;
       } else if (r > 0.945 && ri < ROCK_MAX) {
         const s = 0.6 + hash2(gx + 55, gz + 21) * 2.0;
         _pos.set(wx, y + s * 0.3, wz);
@@ -491,12 +749,61 @@ function scatter(px, pz) {
     }
   }
   _m4.makeScale(0, 0, 0);
-  for (let k = ti; k < TREE_MAX; k++) { trunks.setMatrixAt(k, _m4); leaves.setMatrixAt(k, _m4); }
+  for (let k = ci; k < CONIF_MAX; k++) { trunksC.setMatrixAt(k, _m4); leavesC.setMatrixAt(k, _m4); }
+  for (let k = bi; k < BROAD_MAX; k++) { trunksB.setMatrixAt(k, _m4); leavesB.setMatrixAt(k, _m4); }
   for (let k = ri; k < ROCK_MAX; k++) rocks.setMatrixAt(k, _m4);
-  trunks.instanceMatrix.needsUpdate = true;
-  leaves.instanceMatrix.needsUpdate = true;
-  leaves.instanceColor.needsUpdate = true;
-  rocks.instanceMatrix.needsUpdate = true;
+  for (const m of [trunksC, leavesC, trunksB, leavesB, rocks]) m.instanceMatrix.needsUpdate = true;
+  leavesC.instanceColor.needsUpdate = true;
+  leavesB.instanceColor.needsUpdate = true;
+}
+
+// ── 풀 — 나무보다 훨씬 촘촘해야 해서 가까운 범위만 따로 깐다
+const GCELL = 1.8, GRASS_R = 24;       // 반경 약 43m
+let grassKey = '';
+function scatterGrass(px, pz) {
+  const bx = Math.round(px / GCELL), bz = Math.round(pz / GCELL);
+  const key = (bx >> 2) + ',' + (bz >> 2);       // 약 7m 움직일 때만 다시 깐다
+  if (key === grassKey) return;
+  grassKey = key;
+
+  let k = 0;
+  for (let i = -GRASS_R; i <= GRASS_R && k < GRASS_MAX; i++) {
+    for (let j = -GRASS_R; j <= GRASS_R && k < GRASS_MAX; j++) {
+      const dd = i * i + j * j;
+      if (dd > GRASS_R * GRASS_R) continue;
+      // ── LOD: 멀수록 성기게 깔고, 가장 바깥은 작게 줄여 갑자기 튀어나오지 않게 한다
+      const dn = Math.sqrt(dd) / GRASS_R;
+      const fade = 1 - smooth((dn - 0.68) / 0.32);
+      if (fade <= 0.02) continue;
+
+      const gx = bx + i, gz = bz + j;
+      const r = hash2(gx + 4409, gz + 911);
+      const wx = gx * GCELL + (hash2(gx + 17, gz) - 0.5) * GCELL;
+      const wz = gz * GCELL + (hash2(gx, gz + 17) - 0.5) * GCELL;
+      if (Math.abs(wx - roadX(wz)) < ROAD_HALF + 2.6) continue;   // 노면·갓길엔 안 난다
+      const y = terrainHeight(wx, wz);
+      if (y < seaY(wz) + 0.8) continue;
+
+      const bl = biomeAt(wz);
+      if (r > biomeNum(bl, 'grass') * (1 - dn * 0.5)) continue;
+
+      const s = (0.75 + hash2(gx + 88, gz + 5) * 0.85) * fade;
+      _pos.set(wx, y - 0.04, wz);
+      _q.setFromAxisAngle(_axis, r * 11.3);
+      _scl.set(s * (0.85 + r * 0.4), s * (0.75 + r * 0.55), s);   // 포기마다 폭·키가 다르게
+      _m4.compose(_pos, _q, _scl);
+      grass.setMatrixAt(k, _m4);
+      // 텍스처가 이미 밝은 초록이라 바이옴 색은 옅게만 섞고, 포기마다 밝기를 흩는다
+      biomeColor(bl, 'ground', _tmp).lerp(WHITE, 0.62)
+        .multiplyScalar(0.88 + hash2(gz + 3, gx) * 0.34);
+      grass.setColorAt(k, _tmp);
+      k++;
+    }
+  }
+  _m4.makeScale(0, 0, 0);
+  for (let i = k; i < GRASS_MAX; i++) grass.setMatrixAt(i, _m4);
+  grass.instanceMatrix.needsUpdate = true;
+  grass.instanceColor.needsUpdate = true;
 }
 
 // 가드레일 — 바다·낭떠러지 쪽 갓길에 세운다
@@ -530,11 +837,191 @@ function guardrails(pz) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  노면 — 도로만 따로 띠(ribbon) 메시로 깔고 차선을 픽셀 단위로 그린다.
+//  지형 정점(약 4.4m 간격)으로는 15cm 차선을 표현할 수 없어서 분리했다.
+//  MeshStandardMaterial 을 onBeforeCompile 로 고쳐 쓰므로
+//  그림자·안개·톤매핑은 three 의 기본 파이프라인을 그대로 탄다.
+// ═══════════════════════════════════════════════════════════
+const LANE_W = ROAD_HALF / 2;          // 편도 2차로 (총 4차로, 차로폭 4.5m)
+const ROAD_EDGE = ROAD_HALF + SHOULDER_W;   // 갓길 바깥 끝 — 여기서 지형 색과 만난다
+const roadUniforms = {
+  uWet:    { value: 0 },
+  uGround: { value: new THREE.Color(0x7a9f57) },   // 갓길이 이어질 땅 색(바이옴 따라 변함)
+};
+
+const roadMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff, roughness: 0.94, metalness: 0.0,
+});
+roadMat.envMapIntensity = 0.55;
+roadMat.onBeforeCompile = shader => {
+  shader.uniforms.uWet = roadUniforms.uWet;
+  shader.uniforms.uGround = roadUniforms.uGround;
+
+  shader.vertexShader = `
+    attribute float aU;
+    varying float vU;
+    varying vec3 vWPos;
+  ` + shader.vertexShader.replace('#include <project_vertex>', `
+    #include <project_vertex>
+    vU = aU;
+    vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  `);
+
+  shader.fragmentShader = `
+    uniform float uWet;
+    uniform vec3 uGround;
+    varying float vU;
+    varying vec3 vWPos;
+
+    float rh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float rn(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(rh(i), rh(i + vec2(1,0)), f.x),
+                 mix(rh(i + vec2(0,1)), rh(i + vec2(1,1)), f.x), f.y);
+    }
+    // 가로 방향 띠 하나 — 화면상 폭으로 안티에일리어싱해서 멀리서도 안 깜빡인다
+    float rband(float x, float c, float hw){
+      float d = abs(x - c) - hw;
+      float w = max(fwidth(x), 1e-4) * 0.8;
+      return 1.0 - smoothstep(-w, w, d);
+    }
+    // 점선 — 주기 period 중 duty 만큼만 칠한다
+    float rdash(float z, float period, float duty){
+      float t = fract(z / period);
+      float w = fwidth(t);
+      if (w > 0.3) return duty;              // 아주 멀면 평균값으로 뭉갠다
+      return smoothstep(duty + w, duty - w, t);
+    }
+  ` + shader.fragmentShader.replace('#include <color_fragment>', `
+    #include <color_fragment>
+
+    float rU = vU;
+    float aU = abs(rU);
+    vec2  rp = vec2(rU, vWPos.z);
+
+    // 아스팔트 — 아주 큰 얼룩부터 잔알갱이까지 겹쳐 같은 무늬가 반복돼 보이지 않게 한다
+    float blotch = rn(rp * 0.035) * 0.6 + rn(rp * 0.11) * 0.4;      // 주기 10~30m 짜리 색 얼룩
+    float grain  = rn(rp * 0.9) * 0.42 + rn(rp * 3.7) * 0.31
+                 + rn(rp * 14.0) * 0.17 + rn(rp * 44.0) * 0.10;     // 자갈 알갱이
+    vec3 col = mix(vec3(0.150, 0.155, 0.170), vec3(0.275, 0.278, 0.298), grain);
+    col *= 0.86 + 0.28 * blotch;                                    // 포장 시기가 다른 듯한 색차
+    col = mix(col, col * vec3(1.05, 1.0, 0.93), smoothstep(0.62, 0.85, blotch));
+
+    // 보수한 자국 — 가끔 짙은 패치가 지나간다
+    float patch = smoothstep(0.70, 0.78, rn(rp * vec2(0.06, 0.025)));
+    col *= 1.0 - 0.22 * patch;
+
+    // 바퀴가 지나간 자리 — 차로 중앙(±2.25, ±6.75) 좌우로 닳아 반들거린다
+    float wear = rband(aU, 1.45, 0.55) + rband(aU, 3.05, 0.55)
+               + rband(aU, 5.95, 0.55) + rband(aU, 7.55, 0.55);
+    wear = clamp(wear, 0.0, 1.0);
+    col *= 1.0 - 0.13 * wear;
+
+    // ── 차선
+    float yl = clamp(rband(rU, -0.38, 0.10) + rband(rU, 0.38, 0.10), 0.0, 1.0);  // 중앙 황색 복선
+    float wl = clamp(rband(aU, ${(ROAD_HALF - 0.85).toFixed(3)}, 0.12)           // 가장자리 실선
+                   + rband(aU, ${LANE_W.toFixed(3)}, 0.095) * rdash(vWPos.z, 14.0, 0.38), // 차로 경계 점선
+                   0.0, 1.0);
+
+    float pw = 0.80 + 0.20 * grain;          // 마모는 살짝만 — 선명도는 지킨다
+    col = mix(col, vec3(0.95, 0.95, 0.92), wl * pw);
+    col = mix(col, vec3(0.97, 0.76, 0.14), yl * pw);
+    float paint = clamp(wl + yl, 0.0, 1.0);
+
+    // ── 아스팔트 → 흙 갓길 → 풀. 경계를 노이즈로 흩어 칼로 자른 티를 없앤다
+    float jitter = (rn(rp * vec2(0.7, 0.35)) - 0.5) * 0.75;
+    float edge = smoothstep(${(ROAD_HALF - 0.5).toFixed(3)}, ${(ROAD_HALF + 1.1).toFixed(3)}, aU + jitter);
+    col = mix(col, vec3(0.34, 0.28, 0.20) * (0.72 + 0.55 * grain), edge);
+    // 갓길 바깥 끝에서 땅 색과 만난다 → 지형 메시와의 이음매가 안 보인다
+    float toGrass = smoothstep(${(ROAD_EDGE - 2.2).toFixed(3)}, ${ROAD_EDGE.toFixed(3)}, aU + jitter * 0.6);
+    col = mix(col, uGround * (0.80 + 0.40 * grain), toGrass);
+
+    float onRoad = 1.0 - edge;               // 흙 갓길은 젖어도 안 반짝인다
+    col *= mix(1.0, mix(1.0, 0.55, onRoad), uWet);
+    diffuseColor.rgb = col;
+
+    float rRough = mix(mix(0.93, 0.70, paint), 0.16, uWet * onRoad);   // 젖으면 거울처럼 반사한다
+  `).replace('#include <roughnessmap_fragment>', `
+    #include <roughnessmap_fragment>
+    roughnessFactor = rRough;
+  `);
+};
+
+const ROAD_SEG = 4, ROAD_BACK = 200, ROAD_FWD = 1100;
+const ROAD_ROWS = Math.round((ROAD_BACK + ROAD_FWD) / ROAD_SEG) + 1;
+const ROAD_COLS = 17;
+const ROAD_LIFT = 0.03;                // 지형 위로 살짝 띄워 z-파이팅을 막는다
+
+const roadGeo = new THREE.BufferGeometry();
+{
+  const n = ROAD_ROWS * ROAD_COLS;
+  roadGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  roadGeo.setAttribute('normal',   new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  roadGeo.setAttribute('aU',       new THREE.BufferAttribute(new Float32Array(n), 1));
+  const idx = [];
+  for (let r = 0; r < ROAD_ROWS - 1; r++)
+    for (let c = 0; c < ROAD_COLS - 1; c++) {
+      const a = r * ROAD_COLS + c, b = a + 1, d = a + ROAD_COLS, e = d + 1;
+      idx.push(a, d, b, b, d, e);
+    }
+  roadGeo.setIndex(idx);
+}
+const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+roadMesh.receiveShadow = true;
+roadMesh.frustumCulled = false;
+scene.add(roadMesh);
+
+let roadKey = null;
+function updateRoad(pz) {
+  const b = Math.round(pz / 8);
+  if (b === roadKey) return;
+  roadKey = b;
+  const z0 = b * 8 - ROAD_BACK;
+  const pos = roadGeo.attributes.position, au = roadGeo.attributes.aU;
+
+  for (let r = 0; r < ROAD_ROWS; r++) {
+    const wz = z0 + r * ROAD_SEG;
+    const rx = roadX(wz);
+    for (let c = 0; c < ROAD_COLS; c++) {
+      const u = -ROAD_EDGE + (2 * ROAD_EDGE) * (c / (ROAD_COLS - 1));
+      const wx = rx + u;
+      // 갓길 바깥 끝에서는 띄움을 0으로 없앤다 → 지형 위에 떠 있는 것처럼 보이지 않는다
+      const lift = ROAD_LIFT * (1 - smooth((Math.abs(u) - ROAD_HALF) / SHOULDER_W));
+      const i = r * ROAD_COLS + c;
+      pos.setXYZ(i, wx, terrainHeight(wx, wz) + lift, wz);
+      au.setX(i, u);
+    }
+  }
+  pos.needsUpdate = true; au.needsUpdate = true;
+  roadGeo.computeVertexNormals();
+}
+
+// ═══════════════════════════════════════════════════════════
 //  차량 (외장 + 실내)
 // ═══════════════════════════════════════════════════════════
 const CARS = [
   { name: '스포츠', color: 0xc9453c, len: 4.5, w: 1.95, h: 1.1, top: 74, acc: 40, grip: 1.15 },
 ];
+
+// 모서리를 둥글린 상자. 각 정점을 안쪽 상자에 붙인 뒤 반지름만큼 밀어내면 된다.
+// 하이라이트가 모서리를 타고 흐르기 시작해서 플라스틱 블록 느낌이 사라진다.
+function roundedBox(w, h, d, r, seg = 4) {
+  r = Math.min(r, w / 2 - 1e-3, h / 2 - 1e-3, d / 2 - 1e-3);
+  const g = new THREE.BoxGeometry(w, h, d, seg, seg, seg);
+  const p = g.attributes.position;
+  const hw = w / 2 - r, hh = h / 2 - r, hd = d / 2 - r;
+  const v = new THREE.Vector3(), c = new THREE.Vector3();
+  const cl = (x, m) => Math.max(-m, Math.min(m, x));
+  for (let i = 0; i < p.count; i++) {
+    v.set(p.getX(i), p.getY(i), p.getZ(i));
+    c.set(cl(v.x, hw), cl(v.y, hh), cl(v.z, hd));
+    v.sub(c).normalize().multiplyScalar(r).add(c);
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
 
 const carRoot = new THREE.Group();
 scene.add(carRoot);
@@ -548,28 +1035,70 @@ function buildCar(spec) {
   headlights = []; brakeMats = []; dashMats = [];
 
   const g = new THREE.Group();
-  const paint = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.32, metalness: 0.35 });
-  const trim  = new THREE.MeshStandardMaterial({ color: 0x1e1f24, roughness: 0.65, metalness: 0.2 });
-  const glass = new THREE.MeshPhysicalMaterial({ color: 0x8fb6cf, roughness: 0.06, metalness: 0.0,
-    transparent: true, opacity: 0.28, transmission: 0.0, side: THREE.DoubleSide });
+  // 자동차 도장 = 색층 + 그 위의 맑은 클리어코트. 하이라이트가 두 겹으로 잡혀야 차처럼 보인다.
+  const paint = new THREE.MeshPhysicalMaterial({ color: spec.color, roughness: 0.38, metalness: 0.55,
+    clearcoat: 1.0, clearcoatRoughness: 0.05, envMapIntensity: 1.15 });
+  const trim  = new THREE.MeshStandardMaterial({ color: 0x1e1f24, roughness: 0.55, metalness: 0.35 });
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0x9ec2d8, roughness: 0.04, metalness: 0.0,
+    transparent: true, opacity: 0.34, envMapIntensity: 2.0, side: THREE.DoubleSide });
   const lamp  = new THREE.MeshStandardMaterial({ color: 0xfff6dd, emissive: 0xfff0c8, emissiveIntensity: 1.2 });
 
   const wheelR = spec.h * 0.33;
   const bodyY = wheelR + spec.h * 0.3;
-  const body = new THREE.Mesh(new THREE.BoxGeometry(spec.w, spec.h * 0.56, spec.len), paint);
+
+  // 차체 — 모서리를 둥글리고 앞뒤를 좁혀 블록 느낌을 없앤다
+  const body = new THREE.Mesh(roundedBox(spec.w, spec.h * 0.56, spec.len, 0.22, 5), paint);
   body.position.y = bodyY;
+  {   // 노즈는 낮고 좁게, 테일은 살짝 들리게 — 정점을 직접 눌러 곡면을 만든다
+    const p = body.geometry.attributes.position;
+    const hl = spec.len / 2;
+    for (let i = 0; i < p.count; i++) {
+      const z = p.getZ(i), t = Math.abs(z) / hl;
+      const taper = 1 - Math.pow(t, 2.4) * 0.24;
+      p.setX(i, p.getX(i) * taper);
+      if (z > 0) p.setY(i, p.getY(i) - Math.pow(t, 2.6) * spec.h * 0.16);   // 앞코를 숙인다
+      else       p.setY(i, p.getY(i) + Math.pow(t, 3.0) * spec.h * 0.06);   // 뒤를 들어올린다
+    }
+    body.geometry.computeVertexNormals();
+  }
+
   const cabinH = spec.h * 0.5, cabinY = bodyY + spec.h * 0.28 + cabinH / 2;
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.9, cabinH, spec.len * 0.52), glass);
+  const cabin = new THREE.Mesh(roundedBox(spec.w * 0.88, cabinH, spec.len * 0.52, 0.14, 4), glass);
   cabin.position.set(0, cabinY, -spec.len * 0.04);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.9, 0.07, spec.len * 0.4), paint);
-  roof.position.set(0, cabinY + cabinH / 2, -spec.len * 0.08);
-  const skirt = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 1.01, spec.h * 0.16, spec.len * 0.86), trim);
+  {   // 앞유리를 눕히고 지붕 쪽을 좁혀 캐빈이 유선형이 되게 한다
+    const p = cabin.geometry.attributes.position;
+    const hz = spec.len * 0.26;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i), z = p.getZ(i);
+      const up = Math.max(0, y) / (cabinH / 2);
+      p.setZ(i, z - up * (z > 0 ? hz * 0.42 : -hz * 0.3));
+      p.setX(i, p.getX(i) * (1 - up * 0.14));
+    }
+    cabin.geometry.computeVertexNormals();
+  }
+  const roof = new THREE.Mesh(roundedBox(spec.w * 0.78, 0.09, spec.len * 0.3, 0.05, 3), paint);
+  roof.position.set(0, cabinY + cabinH / 2 - 0.02, -spec.len * 0.12);
+  const skirt = new THREE.Mesh(roundedBox(spec.w * 1.0, spec.h * 0.16, spec.len * 0.86, 0.07, 3), trim);
   skirt.position.y = bodyY - spec.h * 0.3;
   g.add(body, cabin, roof, skirt);
 
+  // 앞뒤 범퍼
+  for (const sz of [1, -1]) {
+    const bump = new THREE.Mesh(roundedBox(spec.w * 0.9, 0.2, 0.22, 0.08, 3), trim);
+    bump.position.set(0, bodyY - spec.h * 0.16, sz * spec.len * 0.49);
+    g.add(bump);
+  }
+  // 휠 아치 — 바퀴 위를 덮어 주면 단번에 차 같아진다
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const arch = new THREE.Mesh(
+      new THREE.TorusGeometry(wheelR * 1.28, 0.055, 6, 12, Math.PI).rotateY(Math.PI / 2), trim);
+    arch.position.set(sx * spec.w * 0.5, wheelR * 1.02, sz * spec.len * 0.32);
+    g.add(arch);
+  }
+
   for (const sx of [-1, 1]) {
-    const l = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.1), lamp);
-    l.position.set(sx * spec.w * 0.32, bodyY + 0.05, spec.len * 0.5);
+    const l = new THREE.Mesh(roundedBox(0.36, 0.18, 0.12, 0.05, 3), lamp);
+    l.position.set(sx * spec.w * 0.31, bodyY + 0.05, spec.len * 0.49);
     g.add(l);
     const sp = new THREE.SpotLight(0xfff0cc, 0, 150, 0.5, 0.6, 1.4);
     sp.position.set(sx * spec.w * 0.32, bodyY, spec.len * 0.5);
@@ -579,23 +1108,41 @@ function buildCar(spec) {
 
     const bm = new THREE.MeshStandardMaterial({ color: 0x6d1a14, emissive: 0xff2a12, emissiveIntensity: 0.35 });
     brakeMats.push(bm);
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.08), bm);
-    t.position.set(sx * spec.w * 0.32, bodyY + 0.08, -spec.len * 0.5);
+    const t = new THREE.Mesh(roundedBox(0.34, 0.15, 0.1, 0.04, 3), bm);
+    t.position.set(sx * spec.w * 0.31, bodyY + 0.08, -spec.len * 0.49);
     g.add(t);
 
-    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.11, 0.09), trim);
-    mirror.position.set(sx * spec.w * 0.56, cabinY, spec.len * 0.15);
-    g.add(mirror);
+    // 사이드미러 — 지지대 + 거울면
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.13, 5).rotateZ(Math.PI / 2), trim);
+    arm.position.set(sx * spec.w * 0.5, cabinY - 0.04, spec.len * 0.15);
+    const mirror = new THREE.Mesh(roundedBox(0.13, 0.1, 0.07, 0.03, 2), trim);
+    mirror.position.set(sx * spec.w * 0.58, cabinY - 0.02, spec.len * 0.15);
+    g.add(arm, mirror);
   }
 
-  const wg = new THREE.CylinderGeometry(wheelR, wheelR, 0.34, 16).rotateZ(Math.PI / 2);
-  const rimG = new THREE.CylinderGeometry(wheelR * 0.55, wheelR * 0.55, 0.36, 10).rotateZ(Math.PI / 2);
-  const tyre = new THREE.MeshStandardMaterial({ color: 0x16171a, roughness: 0.92 });
-  const rim  = new THREE.MeshStandardMaterial({ color: 0xa8adb2, roughness: 0.3, metalness: 0.85 });
+  // 배기구
+  for (const sx of [-1, 1]) {
+    const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.14, 8).rotateX(Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x8b9095, roughness: 0.35, metalness: 0.9 }));
+    ex.position.set(sx * spec.w * 0.28, bodyY - spec.h * 0.24, -spec.len * 0.51);
+    g.add(ex);
+  }
+
+  // ── 바퀴: 타이어(도넛) + 림 + 스포크. 원통 하나보다 훨씬 바퀴답다.
+  const tyreG = new THREE.TorusGeometry(wheelR * 0.8, wheelR * 0.24, 8, 18).rotateY(Math.PI / 2);
+  const treadG = new THREE.CylinderGeometry(wheelR * 0.99, wheelR * 0.99, 0.26, 18).rotateZ(Math.PI / 2);
+  const rimG = new THREE.CylinderGeometry(wheelR * 0.56, wheelR * 0.56, 0.2, 14).rotateZ(Math.PI / 2);
+  const tyre = new THREE.MeshStandardMaterial({ color: 0x1a1b1f, roughness: 0.95, metalness: 0.0 });
+  const rim  = new THREE.MeshStandardMaterial({ color: 0xb6bcc2, roughness: 0.22, metalness: 0.95 });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    const w = new THREE.Mesh(wg, tyre);
+    const w = new THREE.Group();
     w.position.set(sx * spec.w * 0.5, wheelR, sz * spec.len * 0.32);
-    w.add(new THREE.Mesh(rimG, rim));
+    w.add(new THREE.Mesh(tyreG, tyre), new THREE.Mesh(treadG, tyre), new THREE.Mesh(rimG, rim));
+    for (let i = 0; i < 5; i++) {                     // 스포크
+      const sp2 = new THREE.Mesh(new THREE.BoxGeometry(0.21, wheelR * 0.95, 0.055), rim);
+      sp2.rotation.x = (i / 5) * Math.PI;
+      w.add(sp2);
+    }
     g.add(w);
   }
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -733,7 +1280,9 @@ const NIGHT_ZEN = new THREE.Color(0x141d40), NIGHT_HOR = new THREE.Color(0x35446
 const DUSK_HOR = new THREE.Color(0xff8a4a), GREY = new THREE.Color(0x8b9099);
 
 updateChunks(car.x, car.z);
+updateRoad(car.z);
 scatter(car.x, car.z);
+scatterGrass(car.x, car.z);
 guardrails(car.z);
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading')?.remove(), 700);
@@ -791,8 +1340,14 @@ function loop() {
   brakeMats.forEach(m => m.emissiveIntensity += ((braking ? 2.4 : 0.35) - m.emissiveIntensity) * Math.min(1, dt * 12));
 
   updateChunks(car.x, car.z);
+  updateRoad(car.z);
   scatter(car.x, car.z);
+  scatterGrass(car.x, car.z);
   guardrails(car.z);
+  roadUniforms.uWet.value = wMix.rain;
+  // 갓길이 이어질 땅 색을 지금 바이옴에 맞춘다 → 도로 메시와 지형 메시가 같은 색으로 만난다
+  biomeColor(biomeAt(car.z), 'ground', roadUniforms.uGround.value);
+  windU.uTime.value = elapsed * (1 + wMix.rain * 0.8);   // 비 오면 바람도 세진다
 
   // ── 시간 · 하늘 · 빛
   dayTime = (dayTime + dt * timeScale * 0.05) % 24;
@@ -813,6 +1368,10 @@ function loop() {
   skyMat.uniforms.cloud.value = wMix.cloud;
   skyMat.uniforms.time.value = elapsed;
 
+  // 하늘이 바뀌는 속도에 맞춰 환경맵을 다시 굽는다 (시간 배속이 크면 자주)
+  const envEvery = timeScale >= 12 ? 0.9 : 2.5;
+  if (elapsed - envAt > envEvery) { envAt = elapsed; updateEnv(); }
+
   const bl = biomeAt(car.z);
   biomeColor(bl, 'haze', fogCol);
   fogCol.lerp(NIGHT_HOR, 1 - day).lerp(DUSK_HOR, dusk * 0.55 * day).lerp(GREY, (1 - grey) * 0.6 * day);
@@ -825,9 +1384,15 @@ function loop() {
   sun.color.setRGB(1, 0.92 - dusk * 0.22, 0.84 - dusk * 0.42).lerp(_c1.setRGB(0.66, 0.76, 1), 1 - day);
   sun.position.copy(sunDir).multiplyScalar(day > 0.05 ? 340 : -340).add(carRoot.position);
   sun.target.position.copy(carRoot.position);
-  hemi.intensity = 0.75 + 0.85 * day * grey;
+  hemi.intensity = 0.85 + 0.75 * day * grey;
   hemi.color.copy(horizon);
-  hemi.groundColor.copy(fogCol).multiplyScalar(0.35);
+  // 땅에서 튄 빛 — 너무 어둡게 두면 그늘이 새까맣게 죽는다
+  hemi.groundColor.copy(fogCol).lerp(WHITE, 0.15).multiplyScalar(0.62);
+  // 채움광은 태양 반대쪽에서, 태양이 셀수록 약하게
+  fill.position.copy(sunDir).multiplyScalar(-260).setY(180).add(carRoot.position);
+  fill.target.position.copy(carRoot.position);
+  fill.intensity = 0.22 + 0.30 * (1 - day) + 0.18 * (1 - grey);
+  fill.color.copy(horizon).lerp(WHITE, 0.3);
 
   const autoOn = day < 0.42 || grey < 0.55;
   const wantHL = (lightsManual === null ? autoOn : lightsManual) ? 4.0 : 0;
