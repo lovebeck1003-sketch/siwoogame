@@ -1,14 +1,15 @@
 """
 점프맵 실행기 (Python) — love 계정(lovebeck1003-sketch/jumpmap)의 실제 게임을 파이썬으로 띄운다.
 
-원본 게임은 Three.js 3D 웹 게임(../siwoo/jumpmap.html)이다.
+원본 게임은 Three.js 3D 웹 게임(../siwoo/pc/jumpmap.html)이다.
 이 스크립트는 파이썬 표준 라이브러리만으로 로컬 서버를 열고
 실제 점프맵을 기본 브라우저로 실행한다. (추가 설치 불필요)
 
 사용법:
-    python run.py            # PC 버전(jumpmap.html) 실행
-    python run.py mobile     # 모바일 버전(jumpmap-mobile.html) 실행
-    python run.py fps        # 좀비 FPS(fps.html) 실행
+    python run.py            # PC 버전(siwoo/pc/jumpmap.html) 실행
+    python run.py mobile     # 모바일 버전(siwoo/mobile/jumpmap.html) 실행
+    python run.py fps        # 좀비 FPS(siwoo/fps/fps.html) 실행
+    python run.py car        # 무한 드라이브(siwoo/drive/index.html) 실행
     python run.py menu       # 메뉴(index.html) 실행
 
 Ctrl+C 로 서버 종료.
@@ -27,10 +28,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PAGES = {
     "menu":   "index.html",
-    "pc":     "siwoo/jumpmap.html",
-    "jump":   "siwoo/jumpmap.html",
-    "mobile": "siwoo/jumpmap-mobile.html",
-    "fps":    "fps/fps.html",
+    "pc":     "siwoo/pc/jumpmap.html",
+    "jump":   "siwoo/pc/jumpmap.html",
+    "mobile": "siwoo/mobile/jumpmap.html",
+    "fps":    "siwoo/fps/fps.html",
+    "car":    "siwoo/drive/index.html",
+    "drive":  "siwoo/drive/index.html",
 }
 
 PORT = 8765

@@ -1,2 +1,9 @@
 # Claude Code local config (auto-push hook, local settings)
 .claude/
+
+# python 폴더에서 게임 파일이 보이도록 만든 링크(실체는 저장소 루트에 있음)
+python/siwoo/
+python/index.html
+
+# 파이썬이 자동 생성하는 캐시
+__pycache__/

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>점프맵 · 모바일</title>
+<title>점프맵 · PC</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:linear-gradient(to top, #081223 0%, #04061b 55%, #000 100%);overflow:hidden;font-family:'Courier New',monospace;user-select:none;}
@@ -17,8 +17,9 @@ body{background:linear-gradient(to top, #081223 0%, #04061b 55%, #000 100%);over
 .slot{width:52px;height:52px;background:rgba(0,0,0,0.78);border:2px solid rgba(255,255,255,0.2);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:11px;gap:1px;}
 .slot span:first-child{font-size:20px;}
 #ctrl{position:fixed;bottom:14px;right:14px;color:rgba(255,255,255,0.42);font-size:11px;text-align:right;line-height:1.9;pointer-events:none;}
-#overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:14px;color:#fff;z-index:10;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 12px;}
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;z-index:10;}
 #overlay h1{font-size:34px;letter-spacing:3px;color:#ffdd00;}
+.verbadge{font-size:13px;color:#7fd6ff;letter-spacing:2px;vertical-align:middle;border:1px solid rgba(127,214,238,0.5);border-radius:10px;padding:2px 8px;margin-left:8px;}
 #overlay p{font-size:13px;color:#aaa;line-height:2.0;text-align:center;}
 #overlay p.legend{font-size:12px;line-height:1.8;display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;}
 #overlay p.legend span{white-space:nowrap;}
@@ -37,7 +38,7 @@ body.touch.menu #fsBtn{display:block;}
 #setClose{margin-top:14px;padding:11px;background:#4455ff;border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:bold;cursor:pointer;font-family:inherit;}
 .tbtn.off{opacity:0.28;filter:grayscale(0.85);}
 #startbtn:hover{background:#5566ff;}
-#winscreen{position:fixed;inset:0;background:radial-gradient(ellipse at center, rgba(50,38,0,0.92), rgba(0,0,0,0.95));display:none;flex-direction:column;align-items:center;justify-content:safe center;gap:16px;color:#fff;z-index:20;text-align:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 12px;}
+#winscreen{position:fixed;inset:0;background:radial-gradient(ellipse at center, rgba(50,38,0,0.92), rgba(0,0,0,0.95));display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;z-index:20;text-align:center;}
 #winscreen h1{font-size:42px;letter-spacing:4px;color:#ffd700;text-shadow:0 0 18px rgba(255,200,0,0.6);}
 #winscreen .sub{font-size:15px;color:#ffe9a0;}
 #winscreen .stats{font-size:15px;color:#ddd;line-height:2.1;background:rgba(0,0,0,0.45);border:2px solid rgba(255,215,0,0.35);border-radius:14px;padding:16px 30px;}
@@ -58,7 +59,7 @@ body.touch.menu #fsBtn{display:block;}
 .shopbox .shop-foot{font-size:11px;color:#999;text-align:center;}
 #last-run{font-size:13px;color:#ff9cc7;min-height:18px;}
 /* ── 인게임 상점(플레이 중 B키) ── */
-#shopModal{position:fixed;inset:0;background:rgba(0,0,0,0.82);display:none;flex-direction:column;align-items:center;justify-content:safe center;gap:14px;z-index:15;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 12px;}
+#shopModal{position:fixed;inset:0;background:rgba(0,0,0,0.82);display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:15;}
 #shopModal h2{color:#ffd700;font-size:26px;letter-spacing:2px;}
 #shopModal .sm-sub{font-size:12px;color:#ffe9a0;}
 #shopModal .closebtn{padding:10px 32px;background:#4455ff;border:none;border-radius:10px;color:#fff;font-weight:bold;font-size:15px;cursor:pointer;font-family:inherit;}
@@ -106,16 +107,6 @@ body.touch #audio-ind{bottom:auto;top:74px;left:16px;font-size:26px;}
 .mode-card .mc-badge{font-size:11px;padding:4px 14px;border-radius:20px;background:rgba(120,160,255,0.2);color:#bcd0ff;letter-spacing:1px;}
 .mode-card.locked{opacity:0.5;cursor:not-allowed;filter:grayscale(0.5);}
 .mode-card.locked:hover{transform:none;border-color:rgba(120,150,220,0.3);box-shadow:none;}
-/* 세로 화면이면 게임을 가리고 회전 안내 — orientation.lock 을 지원하지 않는 브라우저(iOS Safari 등) 대비 */
-#rotate-hint{display:none;}
-@media (orientation:portrait){
-  body.touch #rotate-hint{display:flex;position:fixed;inset:0;z-index:99998;background:#04061b;color:#cfe0ff;
-    flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;font-family:inherit;}
-  body.touch #rotate-hint .ph{font-size:64px;animation:rot-turn 1.8s ease-in-out infinite;}
-  body.touch #rotate-hint .rt{font-size:19px;font-weight:700;letter-spacing:.5px;}
-  body.touch #rotate-hint .rs{font-size:13px;opacity:.65;}
-}
-@keyframes rot-turn{0%,60%{transform:rotate(0deg);}80%,100%{transform:rotate(90deg);}}
 body.menu #hud,body.menu #inv,body.menu #ctrl,body.menu #audio-ind,body.menu #freehint,body.menu #mission-hud{display:none!important;}
 #tomenu{position:fixed;top:14px;left:16px;z-index:11;padding:7px 16px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.2);
   border-radius:20px;color:#cfe0ff;font-size:12px;cursor:pointer;font-family:inherit;}
@@ -198,7 +189,7 @@ body.menu #hud,body.menu #inv,body.menu #ctrl,body.menu #audio-ind,body.menu #fr
   <div class="slot" id="s3"><span>코인</span><span id="sc3">0</span></div>
 </div>
 <div id="lava-hud" style="position:fixed;top:64px;left:50%;transform:translateX(-50%);display:none;font-weight:800;font-size:15px;letter-spacing:1px;color:#ffce8a;text-shadow:0 0 10px rgba(255,80,20,0.9);pointer-events:none;"></div>
-<div id="ctrl">WASD: 이동 · SPACE: 점프<br>Shift: 앉기 · Ctrl: 달리기<br>Q: 글라이드 · E: 점프<br>Z: 비행 · 🛗 200칸 엘리베이터(100코인)<br>B: 상점 · V: 자유 시점 · M: 사운드 · N: 모드</div>
+<div id="ctrl">WASD: 이동 · SPACE: 점프<br>Shift: 앉기 · Ctrl: 달리기<br>Q: 글라이드 · E: 점프<br>Z: 비행 · R: 200칸 엘리베이터(100코인)<br>B: 상점 · V: 자유 시점 · M: 사운드 · N: 모드</div>
 <div id="flash"></div>
 <div id="rainveil"></div>
 <div id="settingsBtn" title="설정">⚙ 설정</div>
@@ -228,7 +219,7 @@ body.menu #hud,body.menu #inv,body.menu #ctrl,body.menu #audio-ind,body.menu #fr
       <div class="tbtn sm" id="tb-glide">🪂<span class="tk">글라이드</span></div>
       <div class="tbtn sm" id="tb-jb">⏫<span class="tk">점프</span></div>
       <div class="tbtn sm" id="tb-fly">🚀<span class="tk">비행</span></div>
-      <div class="tbtn sm" id="tb-elev">🛗<span class="tk">200칸</span></div>
+      <div class="tbtn sm" id="tb-elev">🛗<span class="tk">엘베</span></div>
     </div>
     <div class="tbtn" id="tb-jump">점프<span class="tk">JUMP</span></div>
   </div>
@@ -274,8 +265,8 @@ body.menu #hud,body.menu #inv,body.menu #ctrl,body.menu #audio-ind,body.menu #fr
 </div>
 <div id="overlay">
   <button id="tomenu">← 메인 메뉴</button>
-  <h1>JUMP MAP</h1>
-  <p>화면 드래그로 시야 전환 · 왼쪽 조이스틱으로 이동<br>오른쪽 <b>점프</b> 버튼으로 점프(더블점프)<br>🪂글라이드 · ⏫점프 · 🚀비행 · 🛗엘베 · 🛒상점<br>목표는 가장 높은 플랫폼까지 도달하는 것입니다</p>
+  <h1>JUMP MAP <span class="verbadge">🖥 PC</span></h1>
+  <p>마우스 드래그로 시야 전환<br>WASD 이동 · SPACE 점프(더블점프)<br>Q: 글라이드 · E: 점프 · Z: 비행 · R: 엘리베이터(시작 지점만)<br>목표는 가장 높은 플랫폼까지 도달하는 것입니다</p>
   <p class="legend">특수 발판 ─
     <span style="color:#22ff77">↑ 점프대</span>
     <span style="color:#ff9911">⇑ 부스트</span>
@@ -2443,19 +2434,7 @@ function closeSettings(){ const m=document.getElementById('settingsModal'); if(m
 })();
 /* -- fullscreen (mobile) -- */
 function fsEl(){ return document.fullscreenElement || document.webkitFullscreenElement; }
-function lockLandscape(){
-  // 화면 방향 고정은 대부분의 브라우저에서 '전체화면 상태 + 사용자 제스처' 안에서만 허용된다.
-  // 지원하지 않는 브라우저(iOS Safari)에서는 조용히 실패하고 #rotate-hint 안내가 대신 뜬다.
-  try{
-    const so=screen.orientation;
-    if(so && so.lock) so.lock('landscape').catch(()=>{});
-  }catch(err){}
-}
-function reqFS(){
-  const e=document.documentElement; const fn=e.requestFullscreen||e.webkitRequestFullscreen;
-  if(fn && !fsEl()){ try{ const r=fn.call(e); if(r&&r.then) r.then(lockLandscape,()=>{}); else lockLandscape(); }catch(err){} }
-  else lockLandscape();
-}
+function reqFS(){ const e=document.documentElement; const fn=e.requestFullscreen||e.webkitRequestFullscreen; if(fn && !fsEl()){ try{ fn.call(e); }catch(err){} } }
 function exitFS(){ const fn=document.exitFullscreen||document.webkitExitFullscreen; if(fn && fsEl()){ try{ fn.call(document); }catch(err){} } }
 function toggleFS(){ if(fsEl()) exitFS(); else reqFS(); }
 (function initFS(){
@@ -2502,7 +2481,7 @@ if(!renderer){
     + '</div>';
   throw new Error('WebGL context unavailable');
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));   // 모바일 최적화: 픽셀 비율 상한(3→1.5)으로 렌더 부하 대폭 절감
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;     // 부드러운 그림자
@@ -2561,7 +2540,7 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.18));
 const sun = new THREE.DirectionalLight(0xfff4e6, 1.0);
 sun.position.set(15,40,15);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024,1024);   // 모바일 최적화: 그림자 해상도 절반(2048→1024)
+sun.shadow.mapSize.set(2048,2048);
 sun.shadow.camera.left=-80; sun.shadow.camera.right=80;
 sun.shadow.camera.top=80; sun.shadow.camera.bottom=-80;
 sun.shadow.camera.far=250;
@@ -2932,7 +2911,7 @@ rainMat.fog=false;
 const rain=new THREE.LineSegments(rainGeo, rainMat);
 rain.frustumCulled=false; rain.visible=false; scene.add(rain);
 let rainLevel=0, rainTarget=0, rainTimer=320;
-const rainVeilEl=document.getElementById('rainveil');
+const rainVeilEl=document.getElementById('rainveil');   // 비 화면 틴트 오버레이 캐시
 
 // (2) 발 아래 지구 — 고정 위치라 올라갈수록 멀어져 작아짐(=지구에서 멀어지는 연출). 어느 정도 올라가야 등장
 // 절차적 지구 텍스처(외부 이미지 없이 캔버스로 대륙/바다/빙하/사막 + 구름층 생성)
@@ -3165,7 +3144,7 @@ function updateSky(){
   const landOp=1;
   landGroup.visible = true;
   landGroup.traverse(o=>{ if(o.isMesh) o.material.opacity=landOp; });
-  // 비: 지구권(t<0.3)에서만 가끔 — 토글식 날씨(설정에서 끌 수 있음)
+  // 비: 지구권(t<0.3)에서만 가끔 — 토글식 날씨
   if(t<0.3 && GS.rain!==false){
     if(--rainTimer<=0){
       rainTarget = rainTarget>0.5 ? 0 : 1;
@@ -3175,7 +3154,7 @@ function updateSky(){
   rainLevel += (rainTarget-rainLevel)*0.012;
   const rainShow = rainLevel>0.015;
   rain.visible = rainShow;
-  if(rainVeilEl && !rainShow) rainVeilEl.style.opacity = 0;
+  if(rainVeilEl && !rainShow) rainVeilEl.style.opacity = 0;   // 비 그치면 틴트 제거
   if(rainShow){
     rain.position.copy(camera.position);
     for(let i=0;i<RAIN_N;i++){
@@ -3185,7 +3164,7 @@ function updateSky(){
     }
     rainGeo.attributes.position.needsUpdate=true;
     rainMat.opacity = Math.min(1,rainLevel)*0.85*cl(1-t/0.3);
-    if(rainVeilEl) rainVeilEl.style.opacity = Math.min(1,rainLevel)*0.5*cl(1-t/0.3);
+    if(rainVeilEl) rainVeilEl.style.opacity = Math.min(1,rainLevel)*0.5*cl(1-t/0.3);   // 비 오는 화면 틴트
   }
   // 바다 + 윤슬: 산·초원과 같이 계속 남긴다. 수평선 색은 지평선 헤이즈와 맞춤
   seaUniforms.uTime.value = tick*0.016;
@@ -3485,7 +3464,7 @@ function genMap(){
   deathFloor = -10;   // 무한·타임어택: 죽음 바닥 초기화(이후 플레이어를 따라 상승)
 }
 
-// 무한·타임어택: 플레이어가 오를수록 위로 발판을 이어붙이고, 멀리 아래는 정리(성능·메모리)
+// 무한 모드: 플레이어가 오를수록 위로 발판을 이어붙이고, 멀리 아래는 정리(성능·메모리)
 function extendEndless(){
   // 항상 플레이어보다 60 위까지 발판이 있도록 생성(프레임당 최대 30칸)
   let guard=0;
@@ -3547,9 +3526,9 @@ const skCtx=skCanvas.getContext('2d');
 const skTex=new THREE.CanvasTexture(skCanvas);
 skTex.magFilter=THREE.LinearFilter; skTex.minFilter=THREE.LinearMipmapLinearFilter;
 const playerSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:skTex, transparent:true, depthWrite:false}));
-playerSprite.renderOrder=12;   // 배경(구름·태양 등 투명 요소) 위에 항상 그려 캐릭터가 투명해지지 않게
 const SK_HEIGHT=2.7;
 playerSprite.scale.set(SK_HEIGHT*SK_W/SK_H, SK_HEIGHT, 1);
+playerSprite.renderOrder=12;   // 배경(구름·태양 등 투명 요소) 위에 항상 그려 캐릭터가 투명해지지 않게
 playerSprite.position.y=SK_HEIGHT/2-0.10;     // 발(캔버스 하단 여백 보정)이 그룹 원점(=py)에 오도록
 playerGroup.add(playerSprite);
 
@@ -3733,7 +3712,6 @@ let eff={fly:0,jump:0,glide:0};
 let reviveStock=0;          // 부활권: 추락/용암 즉사 시 자동 사용 → 안전 지점 복귀
 let shieldStock=0, shieldInvuln=0;   // 보호막: 전기 감전 1회 방어 + 짧은 무적
 let hp=3, maxHp=3, hurtInvuln=0;     // ❤️ 체력 하트: 데미지 발판 밟으면 1칸 감소(잠시 무적), 0이면 사망. ❤️ 아이템으로 회복
-let touchCrouch=false;               // 모바일 앉기 버튼 눌림 상태
 let prevOnGround=true, fallVy=0;   // 착지 감지(먼지/소리)용
 let gameMode='normal';      // 'normal' | 'quake'(지진) | 'electric'(전기)
 let electricT=0, electricCharge=0, electricZap=false;   // 전기 모드 5초 주기
@@ -3766,7 +3744,7 @@ const UPGRADES=[
   {key:'glide',    name:'시작 글라이드',   icon:'🪂', max:3, prices:[50,100,180],         color:'#88ffcc', eff:l=>'시작 시 글라이드 +'+l}
 ];
 
-// ── 튜닝 상수(변경): 우주 저중력 · 인게임 상점 잠금 ── (PC 버전과 동일하게 맞춤)
+// ── 튜닝 상수(변경): 우주 저중력 · 인게임 상점 잠금 ──
 const SPACE_LOW_GRAV   = 0.55;     // 우주에서 중력이 가벼워지는 정도(최대 -55%) — 달처럼 붕 뜨는 느낌. 0이면 기존과 동일
 const SPACE_GRAV_START = 0.2;      // 이 고도 비율(0=지상~1=우주)부터 우주 저중력이 서서히 적용
 const SPACE_FALL_SLOW  = 0.5;      // 우주에서 최대 낙하속도 감소(최대 -50%) — 천천히 하강
@@ -4173,7 +4151,7 @@ function useElevatorTier(rise, cost, needClimb, label){
   showPickup(label+' 탑승 중...');
   updateHUD(); updateInv();
 }
-// 200칸 엘리베이터(100코인) — 엘리베이터 없이 직접 200칸 등반해야 해금. 엘리베이터는 이것 하나뿐.
+// R: 200칸 엘리베이터(100코인) — 엘리베이터 없이 직접 200칸 등반해야 해금. 엘리베이터는 이것 하나뿐.
 function useElevator(){ useElevatorTier(elevatorRise, elevatorCost, elevatorNeedClimb, elevatorRise+'칸 엘리베이터'); }
 function doJump(){
   if(jumpsLeft>0){vy = (eff.jump>0 ? 0.30 : 0.22) * (1+0.03*(upgrades.jump||0)); jumpsLeft--; sfxJump(jumpsLeft===0?1.18:1); burst(px,py,pz,7, 0.55,0.92,1.0);}   // 점프력 증가 업그레이드 적용
@@ -4222,7 +4200,7 @@ window.addEventListener('wheel',e=>{
 }, {passive:true});
 
 /* ── 모바일 터치 컨트롤 ── */
-const IS_TOUCH = true;   // 모바일 전용 버전 — 터치 조작 항상 표시
+const IS_TOUCH = false;   // PC 전용 버전 — 모바일(터치) 조작 미표시
 let touchMove={active:false,x:0,y:0};   // 가상 조이스틱 아날로그 벡터(x:우, y:전진, 크기 0~1)
 if(IS_TOUCH){
   document.body.classList.add('touch');
@@ -4547,7 +4525,6 @@ function showMainMenu(){
   if(document.exitPointerLock) document.exitPointerLock();
 }
 function enterMode(mode){
-  if(document.body.classList.contains('touch')) reqFS();   // 게임 시작 = 전체화면 + 가로 고정
   gameMode=mode;
   if(mode==='stage') stageLevel=1;   // ⏱️ 타임어택은 항상 1단계부터
   restart();                 // 모드 반영 풀 리셋(genMap+위치 등)
@@ -4641,7 +4618,7 @@ function resolveCollisions(){
   for(let pi=platStart();pi<platforms.length;pi++){
     const p=platforms[pi];
     if(p.cstate==='gone') continue; // 무너져 사라진 발판은 충돌 없음
-    if(p.culled) continue;          // ♾️/⏱️ 무한·타임어택: 정리된 먼 발판은 충돌 없음
+    if(p.culled) continue;          // ♾️ 무한 모드: 정리된 먼 발판은 충돌 없음
     const phh=p.h/2;
     const pMinX=p.x-p.w/2, pMaxX=p.x+p.w/2;
     const pMinY=p.y-phh,   pMaxY=p.y+phh;
@@ -4755,7 +4732,7 @@ function update(){
   // 움직이는 발판 + 붕괴 발판 업데이트
   for(let i=platStart();i<platforms.length;i++){
     const p=platforms[i];
-    if(p.culled) continue;          // ♾️/⏱️ 메시가 정리된 발판은 건너뜀(널 참조 방지)
+    if(p.culled) continue;          // ♾️ 무한 모드: 메시가 정리된 발판은 건너뜀(널 참조 방지)
     if(p.kind==='electric'){
       const mat=platMeshes[i].material;
       mat.emissiveIntensity = electricZap ? 1.9 : (0.22 + electricCharge*1.1);
@@ -4838,7 +4815,7 @@ function update(){
       showPickup('엘리베이터 도착');
     }
   } else {
-    // 우주 저중력(변경): 고도가 높을수록 중력이 '가벼워짐' — 달처럼 붕 뜨고 천천히 하강 (PC와 동일)
+    // 우주 저중력(변경): 고도가 높을수록 중력이 '가벼워짐' — 달처럼 붕 뜨고 천천히 하강(우주 = 저중력)
     let gBase = (eff.fly>0 ? 0.008 : 0.014);
     // 발판 간격을 정할 때와 똑같은 spaceAmtAt() 을 써야 한다(둘이 어긋나면 도달 보장이 깨진다).
     // 예전엔 platforms[last].y 를 그대로 썼는데, 무한·타임어택은 꼭대기가 늘 머리 위 60에 따라붙어서
@@ -4968,7 +4945,7 @@ function update(){
     if(!lavaSwallow()) return;
   }
 
-  // 추락 처리 (무한·타임어택은 따라오르는 죽음 바닥 기준)
+  // 추락 처리 (무한 모드는 따라오르는 죽음 바닥 기준)
   const fallFloor = (gameMode==='endless'||gameMode==='stage') ? deathFloor : platforms[0].y-10;
   if(py < fallFloor){
     if(!loseLife()) return;
@@ -5317,6 +5294,77 @@ function reportGameError(err){
   }catch(e){}
 }
 window.addEventListener('error', function(ev){ reportGameError(ev.error||ev.message); });
+// ── 🧪 테스트용 치트 ──
+// PC: K 를 1.2초 안에 세 번 연타 → 코인 +10000 · 체력 회복
+//     L 를 1.2초 안에 세 번 연타 → 비행 모드 ON/OFF (SPACE 상승 · Shift 하강 · WASD 이동, 중력·발판 무시)
+// 모바일: 화면 위 COINS 숫자를 1.5초 안에 다섯 번 탭 → 코인 +10000 · 체력 회복
+// (엘리베이터 해금은 주지 않음 — 직접 등반으로만 열림)
+let cheatFly=false;
+const CHEAT_FLY_SPD=0.35;   // 비행 치트: 프레임당 상승/하강 거리
+function cheatToggleFly(){
+  cheatFly=!cheatFly;
+  if(typeof doFlash==='function') doFlash(cheatFly?'rgba(120,200,255,.35)':'rgba(170,170,170,.30)');
+  if(typeof showPickup==='function') showPickup(cheatFly?'🧪 치트 비행 ON — SPACE 상승 · Shift 하강':'🧪 치트 비행 OFF');
+  if(typeof sfxBuy==='function') sfxBuy();
+}
+function cheatGive(){
+  coins += 10000; saveCoins();
+  // 엘리베이터 해금은 치트로 주지 않는다 — 직접 100/200칸 등반해야만 열리는 게 의도된 규칙.
+  if(typeof maxHp!=='undefined') hp = maxHp;
+  if(typeof updateHUD==='function') updateHUD();
+  if(typeof updateInv==='function') updateInv();
+  if(typeof renderShop==='function') renderShop();
+  if(typeof renderUpgrades==='function' && typeof upgradeOpen!=='undefined' && upgradeOpen) renderUpgrades();
+  if(typeof doFlash==='function') doFlash('rgba(255,215,0,.35)');
+  if(typeof showPickup==='function') showPickup('🧪 치트 — 코인 +10000 · 체력 회복');
+  if(typeof sfxBuy==='function') sfxBuy();
+}
+(function initCheat(){
+  // ① 키보드: K 세 번 연타(코인/체력) · L 세 번 연타(비행 ON/OFF)
+  let kHits=0, kLast=0, lHits=0, lLast=0;
+  window.addEventListener('keydown', e=>{
+    const now=performance.now();
+    if(e.code==='KeyK'){
+      kHits = (now-kLast < 1200) ? kHits+1 : 1;
+      kLast = now;
+      if(kHits>=3){ kHits=0; cheatGive(); }
+    } else if(e.code==='KeyL'){
+      lHits = (now-lLast < 1200) ? lHits+1 : 1;
+      lLast = now;
+      if(lHits>=3){ lHits=0; cheatToggleFly(); }
+    }
+  });
+  // ② 터치/클릭: COINS 표시를 다섯 번 연타(모바일용 — 키보드가 없으므로)
+  const cv=document.getElementById('cv');
+  if(cv){
+    cv.style.pointerEvents='auto';
+    let tHits=0, tLast=0;
+    cv.addEventListener('pointerdown', e=>{
+      const now=performance.now();
+      tHits = (now-tLast < 1500) ? tHits+1 : 1;
+      tLast = now;
+      if(tHits>=5){ tHits=0; cheatGive(); }
+      e.stopPropagation();
+    });
+  }
+  // ③ 비행: 원래 update() 는 그대로 돌려서(카메라·HUD·아이템·하늘 유지) 수직 위치만 덮어쓴다.
+  //    이렇게 하면 게임 본체 코드를 한 줄도 안 건드리므로, 커밋 전에 이 치트 블록만 떼면 원상복구된다.
+  if(typeof update==='function'){
+    const origUpdate=update;
+    update=function(){
+      if(!cheatFly){ origUpdate(); return; }
+      const y0=py;
+      origUpdate();
+      // 죽어서 판이 리셋되면 py 가 크게 튄다 — 그때는 덮어쓰지 않는다(시작 지점으로 되돌아가게 둔다)
+      if(Math.abs(py-y0) > 3){ return; }
+      let dy=0;
+      if(keys['Space']) dy += CHEAT_FLY_SPD;
+      if(keys['ShiftLeft']||keys['ShiftRight']) dy -= CHEAT_FLY_SPD;
+      vy=0; onGround=false; jumpsLeft=2;
+      py = y0 + dy;
+    };
+  }
+})();
 function animate(){
   requestAnimationFrame(animate);
   try{ update(); }catch(err){ reportGameError(err); }   // 예외가 나도 렌더는 계속 → 빨강 굳음 방지
@@ -5325,10 +5373,5 @@ function animate(){
 }
 animate();
 </script>
-<div id="rotate-hint">
-  <div class="ph">📱</div>
-  <div class="rt">가로로 돌려주세요</div>
-  <div class="rs">이 게임은 가로 화면에서 플레이합니다</div>
-</div>
 </body>
 </html>
