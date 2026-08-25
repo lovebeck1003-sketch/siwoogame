@@ -64,7 +64,7 @@
 <div id="hud">
   <div id="help">
     <kbd>W</kbd><kbd>S</kbd> 가속·브레이크 &nbsp; <kbd>A</kbd><kbd>D</kbd> 조향 &nbsp; <kbd>Shift</kbd> 부스트 &nbsp; <kbd>Space</kbd> 정지<br>
-    <kbd>C</kbd> 시점 &nbsp; <kbd>R</kbd> 날씨 &nbsp; <kbd>T</kbd> 시간 &nbsp; <kbd>F</kbd> 헤드라이트 &nbsp; <kbd>P</kbd> 화면효과 &nbsp; <kbd>H</kbd> UI
+    <kbd>Z</kbd> 자동 주행 &nbsp; <kbd>C</kbd> 시점 &nbsp; <kbd>R</kbd> 날씨 &nbsp; <kbd>T</kbd> 시간 &nbsp; <kbd>F</kbd> 헤드라이트 &nbsp; <kbd>P</kbd> 화면효과 &nbsp; <kbd>H</kbd> UI
   </div>
   <div id="bottom">
     <div id="speed">0<span>km/h</span></div>
@@ -85,11 +85,11 @@ import * as THREE from 'three';
 // ═══════════════════════════════════════════════════════════
 // grass = 풀 밀도, conif = 침엽수 비율(나머지는 활엽수)
 const BIOMES = [
-  { name: '초원',    ground: 0x7a9f57, rock: 0x8d8d80, hill: 1.0, trees: 0.5,  treeTop: 0x4e7f45, treeH: 1.0, haze: 0xbcd2e6, grass: 1.0,  conif: 0.15 },
-  { name: '침엽수림', ground: 0x557a4a, rock: 0x74766c, hill: 1.6, trees: 0.95, treeTop: 0x2c5238, treeH: 1.5, haze: 0xaec6dc, grass: 0.55, conif: 0.9  },
-  { name: '사막',    ground: 0xcbae7c, rock: 0xb1946a, hill: 0.7, trees: 0.07, treeTop: 0x6f7f4c, treeH: 0.7, haze: 0xdcc8a4, grass: 0.10, conif: 0.0  },
-  { name: '설원',    ground: 0xdde6ee, rock: 0x949da6, hill: 1.3, trees: 0.38, treeTop: 0x36564b, treeH: 1.2, haze: 0xd0dde9, grass: 0.22, conif: 0.85 },
-  { name: '해안',    ground: 0x93ac74, rock: 0xa39d90, hill: 0.55, trees: 0.3, treeTop: 0x517f52, treeH: 1.1, haze: 0xc3dcea, grass: 0.7,  conif: 0.2  },
+  { name: '초원',    ground: 0x7a9f57, rock: 0x8d8d80, hill: 1.0, trees: 0.5,  treeTop: 0x4e7f45, treeH: 1.0, haze: 0xbcd2e6, grass: 1.0,  conif: 0.15, cactus: 0    },
+  { name: '침엽수림', ground: 0x557a4a, rock: 0x74766c, hill: 1.6, trees: 0.95, treeTop: 0x2c5238, treeH: 1.5, haze: 0xaec6dc, grass: 0.55, conif: 0.9,  cactus: 0    },
+  { name: '사막',    ground: 0xcbae7c, rock: 0xb1946a, hill: 0.7, trees: 0.30, treeTop: 0x6f7f4c, treeH: 0.7, haze: 0xdcc8a4, grass: 0.10, conif: 0.0,  cactus: 0.92 },
+  { name: '설원',    ground: 0xdde6ee, rock: 0x949da6, hill: 1.3, trees: 0.38, treeTop: 0x36564b, treeH: 1.2, haze: 0xd0dde9, grass: 0.22, conif: 0.85, cactus: 0    },
+  { name: '해안',    ground: 0x93ac74, rock: 0xa39d90, hill: 0.55, trees: 0.3, treeTop: 0x517f52, treeH: 1.1, haze: 0xc3dcea, grass: 0.7,  conif: 0.2,  cactus: 0    },
 ];
 const BIOME_LEN = 3400;
 
@@ -119,6 +119,16 @@ function coastFactor(z) {
   return t * t * (3 - 2 * t);
 }
 
+// 설원 바이옴(인덱스 3)이 얼마나 섞여 있는가 → 눈이 오는 정도·나무에 쌓인 눈
+function snowFactor(z) {
+  let u = (z / BIOME_LEN) % BIOMES.length;
+  if (u < 0) u += BIOMES.length;
+  let d = Math.abs(u - 3);
+  d = Math.min(d, BIOMES.length - d);
+  const t = Math.max(0, 1 - d);
+  return t * t * (3 - 2 * t);
+}
+
 // ═══════════════════════════════════════════════════════════
 //  도로 · 지형 · 바다
 // ═══════════════════════════════════════════════════════════
@@ -127,6 +137,19 @@ function coastFactor(z) {
 // SHOULDER = 그 바깥에서 지형이 제 높이로 돌아오기까지의 거리. 언덕 진폭을 키웠으니
 // 이 거리도 크게 잡아야 도로 옆이 절벽처럼 솟지 않는다.
 const ROAD_HALF = 4.6, CORRIDOR = 7.2, SHOULDER = 75;
+// 코너링 한계 횡가속도(m/s²). 높이면 더 빠르게 코너를 돌 수 있다. 10 ≈ 1.0G
+const MAX_LAT = 10;
+const CORNER_GRIP_FALL = 0.05;   // 한계 초과분이 1초에 남는 비율(작을수록 급격히 감속)
+const CORNER_SCRUB = 0.22;       // 조향 중 타이어 마찰로 잃는 속도 비율/초 (조향 최대일 때)
+const BODY_SETTLE = 0.002;   // 차체가 지형 기울기를 따라가는 감쇠(1초에 남는 비율). 클수록 물렁
+// 진행 방향이 차 방향을 따라오는 지연 — 작을수록 착 붙고, 키우면 더 미끄럽다
+const SLIDE_HOLD = 0.0009;   // 1초(그립 1 기준)에 남는 어긋남 비율
+const SLIDE_MAX  = 0.30;     // 최대 미끄럼 각도(rad) ≈ 17°
+// 자동 주행 — 조향 이득 / 목표 속도 / 커브에서 줄이는 정도
+const AUTO_GAIN = 2.6, AUTO_TOP = 46.7, AUTO_CURVE_SLOW = 26;
+const RT_SS = 1.4;           // 후처리 렌더타깃 배율(수퍼샘플링). 낮추면 가볍고 거칠어진다
+const BRAKE_FORCE = 18;      // 브레이크(스페이스) 감속도 m/s² — 크면 더 빨리 선다
+const GROUND_SLACK = 0.06;  // 차가 지면 위로 뜰 수 있는 최대 높이(서스펜션 여유)
 const CRUISE = 46.7;       // 손 떼면 일반 최고속(계기판 100)까지 유지
 const SEA_DROP = 9;        // 도로면 대비 해수면 깊이
 const SHORE_START = 30;    // 도로 오른쪽 이만큼부터 해변이 시작
@@ -302,12 +325,16 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(2600, 24, 16), skyMat);
 sky.frustumCulled = false;
 scene.add(sky);
 
-const sun = new THREE.DirectionalLight(0xfff2dc, 2.4);
-sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.near = 1; sun.shadow.camera.far = 800;
 // 카메라가 차에 바짝 붙었으니 그림자 범위도 좁혀 같은 맵으로 더 촘촘하게 받는다
 const SH = 60;      // 그림자 범위를 좁혀 같은 맵으로 더 촘촘하게
+const SHADOW_MAP = 2048;   // 텍셀 = 120m / 2048 ≈ 5.9cm (1024 면 11.7cm 라 차 위에서 티가 난다)
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const _sdir = new THREE.Vector3(), _sright = new THREE.Vector3(),
+      _sup = new THREE.Vector3(), _spos = new THREE.Vector3();
+const sun = new THREE.DirectionalLight(0xfff2dc, 2.4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 800;
 Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
 sun.shadow.camera.updateProjectionMatrix();
 sun.shadow.bias = -0.0006;
@@ -354,7 +381,14 @@ const groundMat = new THREE.MeshStandardMaterial({
 // 3D 풀포기는 아무리 늘려도 수십 미터까지가 한계라, 그 너머는 지형이 직접 잔디처럼
 // 보여야 한다. 큰 얼룩(풀밭의 결) → 중간 뭉치 → 잔알갱이(잎끝) 순으로 겹치고,
 // 멀어질수록 잔알갱이를 죽여 지글거림을 막는다. 이러면 맵 전체가 잔디로 덮여 보인다.
+// 속도가 붙으면 화면이 '뒤로 흐르는' 스트로보(마차바퀴) 현상이 생긴다.
+// 60fps · 100km/h 면 한 프레임에 0.78m 를 가는데, 노면 알갱이(주기 0.27m)나
+// 풀 뭉치(0.59m)처럼 그보다 잘게 반복되는 무늬는 표본화가 모자라 역방향으로 흐른다.
+// → 빠를 때 그 잔무늬만 걷어 낸다. 큰 얼룩(주기 3m 이상)은 그대로 둔다.
+const detailU = { value: 1 };
+
 groundMat.onBeforeCompile = shader => {
+  shader.uniforms.uDetail = detailU;
   shader.vertexShader = 'varying vec3 vGWPos;\n' + shader.vertexShader
     .replace('#include <project_vertex>', `
       #include <project_vertex>
@@ -363,6 +397,7 @@ groundMat.onBeforeCompile = shader => {
 
   shader.fragmentShader = `
     varying vec3 vGWPos;
+    uniform float uDetail;
     float gh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float gn(vec2 p){
       vec2 i = floor(p), f = fract(p);
@@ -378,7 +413,7 @@ groundMat.onBeforeCompile = shader => {
       float gnear = 1.0 - smoothstep(20.0, 90.0, gdist);          // 멀면 잔디알갱이를 뭉갠다
 
       float gpatch = gn(gp * 0.09) * 0.6 + gn(gp * 0.31) * 0.4;   // 풀밭의 큰 결
-      float gtuft  = gn(gp * 1.7);                                // 풀 뭉치
+      float gtuft  = mix(0.5, gn(gp * 1.7), uDetail);              // 풀 뭉치 (빠르면 뭉갠다)
 
       float glum = 0.80 + gpatch * 0.34 + (gtuft - 0.5) * 0.34 * (0.35 + 0.65 * gnear);
       diffuseColor.rgb *= glum;
@@ -742,6 +777,21 @@ const grassGeo = mergeGeos([0, 1, 2].map(i => new THREE.BoxGeometry(0.3, 0.5, 0.
 // 덤불 — 나무보다 낮고 옆으로 퍼진 잎 뭉치. 나무와 풀 사이의 빈 층을 메운다.
 const bushGeo = boxCluster(3, { w: 1.3, h: 0.9, y: 0.6, spread: 0.45, ySpread: 0.3 });
 
+// ── 선인장(사구아로) — 사막 전용. 기둥 하나 + 팔 두 개(가로로 뻗었다가 위로 꺾인다)
+const cactusGeo = (() => {
+  const parts = [new THREE.CylinderGeometry(0.26, 0.30, 3.1, 9, 1).translate(0, 1.55, 0)];
+  for (const sx of [-1, 1]) {
+    const y0 = sx > 0 ? 1.55 : 1.15;                       // 좌우 팔 높이를 다르게 — 대칭 티를 없앤다
+    const arm = new THREE.CylinderGeometry(0.15, 0.15, 0.62, 7, 1);
+    arm.rotateZ(Math.PI / 2);
+    parts.push(arm.translate(sx * 0.42, y0, 0));            // 가로로 뻗은 부분
+    parts.push(new THREE.CylinderGeometry(0.15, 0.15, 0.95, 7, 1)
+      .translate(sx * 0.70, y0 + 0.46, 0));                 // 위로 꺾인 부분
+  }
+  return mergeGeos(parts);
+})();
+const CACTUS_MAX = 220;
+
 // 바위 — 정12면체를 그대로 쓰면 너무 규칙적이라 정점을 흩어 놓는다
 const rockGeo = new THREE.BoxGeometry(2.2, 1.6, 2.0);
 {
@@ -811,6 +861,7 @@ const rails   = mkInst(railGeo, new THREE.MeshStandardMaterial({
 const bushes  = mkInst(bushGeo, broadLeafMat, BUSH_MAX);
 const deads   = mkInst(deadGeo, new THREE.MeshLambertMaterial({ color: 0x7c6a53, flatShading: true }), DEAD_MAX);
 const stumps  = mkInst(stumpGeo, new THREE.MeshLambertMaterial({ color: 0x6b543f, flatShading: true }), STUMP_MAX);
+const cacti   = mkInst(cactusGeo, new THREE.MeshLambertMaterial({ color: 0x4f7a43, flatShading: true }), CACTUS_MAX);
 
 for (const m of [leavesB, leavesC, bushes])
   m.instanceColor = new THREE.InstancedBufferAttribute(
@@ -831,7 +882,7 @@ function scatter(px, pz) {
   if (key === scatterKey) return;
   scatterKey = key;
 
-  let ci = 0, bi = 0, ri = 0, ui = 0, di = 0, si = 0;
+  let ci = 0, bi = 0, ri = 0, ui = 0, di = 0, si = 0, ki = 0;
   for (let i = -SCAT_R; i <= SCAT_R; i++) {
     for (let j = -SCAT_R; j <= SCAT_R; j++) {
       const dd2 = i * i + j * j;
@@ -883,6 +934,15 @@ function scatter(px, pz) {
           deads.setMatrixAt(di++, _m4);
           continue;
         }
+        // 사막에서는 나무 대신 선인장이 선다
+        if (hash2(gx + 555, gz + 222) < biomeNum(bl, 'cactus') && ki < CACTUS_MAX) {
+          const s = (0.75 + hash2(gx + 27, gz + 63) * 0.7) * tFade;
+          _pos.set(wx, y - 0.15, wz);
+          _scl.set(s * wv, s * hv, s * wv);
+          _m4.compose(_pos, _q, _scl);
+          cacti.setMatrixAt(ki++, _m4);
+          continue;
+        }
         const conif = hash2(gx + 301, gz + 77) < biomeNum(bl, 'conif');
         const trunkM = conif ? trunksC : trunksB;
         const leafM  = conif ? leavesC : leavesB;
@@ -900,6 +960,9 @@ function scatter(px, pz) {
           (hash2(gx + 21, gz + 8) - 0.5) * 0.04,
           (hash2(gz, gx) - 0.5) * 0.20,
           (hash2(gz + 5, gx + 5) - 0.5) * 0.20);
+        // 설원에서는 잎에 눈이 얹힌 느낌 — 나무마다 쌓인 양을 다르게 흩는다
+        const snowK = snowFactor(wz);
+        if (snowK > 0.01) _tmp.lerp(WHITE, snowK * (0.42 + hash2(gx + 88, gz + 12) * 0.38));
         leafM.setColorAt(idx, _tmp);
         if (conif) ci++; else bi++;
       } else if (r < dens + 0.10 * clumpK && si < STUMP_MAX && hash2(gx + 4, gz + 4) < 0.25) {
@@ -918,6 +981,8 @@ function scatter(px, pz) {
         bushes.setMatrixAt(ui, _m4);
         biomeColor(bl, 'treeTop', _tmp).offsetHSL(0,
           (hash2(gx, gz + 9) - 0.5) * 0.20, (hash2(gx + 9, gz) - 0.5) * 0.20);
+        const bSnow = snowFactor(wz);
+        if (bSnow > 0.01) _tmp.lerp(WHITE, bSnow * (0.45 + hash2(gx + 6, gz + 66) * 0.35));
         bushes.setColorAt(ui, _tmp);
         ui++;
       } else if (r > 0.955 && ri < ROCK_MAX) {
@@ -936,7 +1001,8 @@ function scatter(px, pz) {
   for (let k = ui; k < BUSH_MAX;  k++) bushes.setMatrixAt(k, _m4);
   for (let k = di; k < DEAD_MAX;  k++) deads.setMatrixAt(k, _m4);
   for (let k = si; k < STUMP_MAX; k++) stumps.setMatrixAt(k, _m4);
-  for (const m of [trunksC, leavesC, trunksB, leavesB, rocks, bushes, deads, stumps])
+  for (let k = ki; k < CACTUS_MAX; k++) cacti.setMatrixAt(k, _m4);
+  for (const m of [trunksC, leavesC, trunksB, leavesB, rocks, bushes, deads, stumps, cacti])
     m.instanceMatrix.needsUpdate = true;
   leavesC.instanceColor.needsUpdate = true;
   leavesB.instanceColor.needsUpdate = true;
@@ -998,6 +1064,7 @@ roadMat.envMapIntensity = 0.55;
 roadMat.onBeforeCompile = shader => {
   shader.uniforms.uWet = roadUniforms.uWet;
   shader.uniforms.uGround = roadUniforms.uGround;
+  shader.uniforms.uDetail = detailU;
 
   shader.vertexShader = `
     attribute float aU;
@@ -1011,6 +1078,7 @@ roadMat.onBeforeCompile = shader => {
 
   shader.fragmentShader = `
     uniform float uWet;
+    uniform float uDetail;
     uniform vec3 uGround;
     varying float vU;
     varying vec3 vWPos;
@@ -1044,7 +1112,7 @@ roadMat.onBeforeCompile = shader => {
 
     // 아스팔트 — 아주 큰 얼룩부터 잔알갱이까지 겹쳐 같은 무늬가 반복돼 보이지 않게 한다
     float blotch = rn(rp * 0.035) * 0.6 + rn(rp * 0.11) * 0.4;      // 넓게 퍼진 색 얼룩만 남긴다
-    float grain  = rn(rp * 0.9) * 0.6 + rn(rp * 3.7) * 0.4;         // 잔알갱이는 뺀다(멀리서 지글거림)
+    float grain  = mix(0.5, rn(rp * 0.9) * 0.6 + rn(rp * 3.7) * 0.4, uDetail);  // 빠르면 잔알갱이를 걷는다
     vec3 col = mix(vec3(0.200, 0.205, 0.220), vec3(0.250, 0.255, 0.272), grain);
     col *= 0.94 + 0.12 * blotch;
 
@@ -1085,6 +1153,19 @@ const ROAD_SEG = 2, ROAD_BACK = 150, ROAD_FWD = 600;
 const ROAD_ROWS = Math.round((ROAD_BACK + ROAD_FWD) / ROAD_SEG) + 1;
 const ROAD_COLS = 17;
 const ROAD_LIFT = 0.30;                // 평평한 지형 위로 확실히 띄운다 (관통 방지)
+
+// 도로 중심선 기준 '법선 방향' 가로 오프셋. 커브에서 도로 메시는 법선 방향으로 깔리므로
+// 단순히 (x - roadX(z)) 로 재면 곡선 구간에서 실제 노면 폭과 어긋난다.
+function roadU(x, z) {
+  const dx = (roadX(z + 1) - roadX(z - 1)) / 2;
+  return (x - roadX(z)) * Math.hypot(1, dx);   // u * nx = Δx  →  u = Δx / nx
+}
+// updateRoad() 가 노면 정점에 주는 lift 와 '똑같은' 식. 차가 이걸 써야 노면에 딱 붙는다.
+function roadLift(u) {
+  const a = Math.abs(u);
+  const cd = Math.min(a, ROAD_HALF) / ROAD_HALF;
+  return (ROAD_LIFT - cd * cd * 0.12) * (1 - smooth((a - ROAD_HALF) / SHOULDER_W));
+}
 
 const roadGeo = new THREE.BufferGeometry();
 {
@@ -1167,6 +1248,7 @@ const carRoot = new THREE.Group();
 scene.add(carRoot);
 let carBody = null, interior = null, headlights = [], brakeMats = [], dashMats = [];
 let steerWheel = null, eyePoint = new THREE.Vector3();
+let wheels = [], wheelRadius = 0.36, wheelRoll = 0, spokeMat = null;   // 바퀴 4개 · 반지름 · 구른 각도
 
 function buildCar(spec) {
   if (carBody) carRoot.remove(carBody);
@@ -1190,12 +1272,16 @@ function buildCar(spec) {
   const body = new THREE.Mesh(new THREE.BoxGeometry(spec.w, spec.h * 0.56, spec.len), paint);
   body.position.y = bodyY;
 
-  const cabinH = spec.h * 0.5, cabinY = bodyY + spec.h * 0.28 + cabinH / 2;
+  // ⚠ 붙어 있는 블록끼리 면을 '정확히' 맞추면 안 된다. 깊이값이 완전히 같아지면
+  //   프레임마다 어느 면이 이길지 뒤바뀌며 지지직 깜빡인다(z-파이팅).
+  //   예전엔 캐빈 바닥 = 차체 윗면, 지붕 옆면 = 캐빈 옆면, 스커트 폭 = 차체 폭,
+  //   휠 아치 바깥면 = 차체 옆면 이 전부 같은 평면이었다. 조금씩 어긋나게 둔다.
+  const cabinH = spec.h * 0.5, cabinY = bodyY + spec.h * 0.28 + cabinH / 2 - 0.035;
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.88, cabinH, spec.len * 0.52), glass);
   cabin.position.set(0, cabinY, -spec.len * 0.04);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.88, 0.09, spec.len * 0.52), paint);
-  roof.position.set(0, cabinY + cabinH / 2, -spec.len * 0.04);   // 캐빈과 폭·앞뒤를 정확히 맞춘다
-  const skirt = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 1.0, spec.h * 0.16, spec.len * 0.86), trim);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.898, 0.09, spec.len * 0.531), paint);
+  roof.position.set(0, cabinY + cabinH / 2, -spec.len * 0.04);   // 캐빈보다 아주 조금 크게
+  const skirt = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 1.016, spec.h * 0.16, spec.len * 0.86), trim);
   skirt.position.y = bodyY - spec.h * 0.3;
   g.add(body, cabin, roof, skirt);
 
@@ -1208,8 +1294,9 @@ function buildCar(spec) {
   // 휠 아치 — 바퀴 위를 덮어 주면 단번에 차 같아진다
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     const arch = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.1, wheelR * 2.6), trim);
-    arch.position.set(sx * (spec.w * 0.5 - 0.05), wheelR * 1.02, sz * spec.len * 0.32);
+      new THREE.BoxGeometry(0.20, 0.1, wheelR * 2.6), trim);
+    // 튀어나온 타이어까지 덮도록 넓히고 바깥으로 뺀다(바깥 끝 = 차체면 +8cm > 타이어 +7cm)
+    arch.position.set(sx * (spec.w * 0.5 - 0.02), wheelR * 1.02, sz * spec.len * 0.32);
     g.add(arch);
   }
 
@@ -1245,15 +1332,42 @@ function buildCar(spec) {
     g.add(ex);
   }
 
-  // ── 바퀴: 네모 블록 타이어 + 네모 림
-  const treadG = new THREE.BoxGeometry(0.26, wheelR * 2, wheelR * 2);
-  const rimG = new THREE.BoxGeometry(0.28, wheelR * 0.9, wheelR * 0.9);
+  // ── 바퀴: 둥근 타이어 + 림. 굴러가고, 앞바퀴는 조향까지 한다.
+  //    실린더는 기본 축이 Y 라 지오메트리를 미리 Z 로 90° 눕혀 축을 X(차 좌우)로 맞춘다.
+  //    그러면 바퀴 그룹의 rotation.x = 구르기, rotation.y = 조향으로 깔끔하게 나뉜다.
+  const treadG = new THREE.CylinderGeometry(wheelR, wheelR, 0.26, 20, 1);
+  treadG.rotateZ(Math.PI / 2);
+  // ⚠ 폭을 서로 다르게 준다. 예전엔 스포크(0.30)와 허브(0.30)의 옆면이 정확히 같은 평면이라
+  //   깊이값이 완전히 같아 프레임마다 어느 쪽이 이길지 뒤바뀌었다(z-파이팅 = 지지직 깜빡임).
+  const rimG = new THREE.CylinderGeometry(wheelR * 0.60, wheelR * 0.60, 0.284, 16, 1);
+  rimG.rotateZ(Math.PI / 2);
+  const hubG = new THREE.CylinderGeometry(wheelR * 0.17, wheelR * 0.17, 0.300, 10, 1);
+  hubG.rotateZ(Math.PI / 2);
+  const spokeG = new THREE.BoxGeometry(0.292, wheelR * 1.02, 0.075);
   const tyre = new THREE.MeshStandardMaterial({ color: 0x1a1b1f, roughness: 0.95, metalness: 0.0 });
   const rim  = new THREE.MeshStandardMaterial({ color: 0xb6bcc2, roughness: 0.22, metalness: 0.95 });
+  spokeMat = new THREE.MeshStandardMaterial({ color: 0xb6bcc2, roughness: 0.22, metalness: 0.95,
+                                              transparent: false, opacity: 1, depthWrite: true });
+  wheels = [];
+  wheelRadius = wheelR;
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     const w = new THREE.Group();
-    w.position.set(sx * (spec.w * 0.5 - 0.13), wheelR, sz * spec.len * 0.32);   // 타이어 폭 0.26의 절반만큼 안쪽
-    w.add(new THREE.Mesh(treadG, tyre), new THREE.Mesh(rimG, rim));
+    // 타이어 바깥면이 차체 옆면보다 7cm 정도 튀어나오게 — 예전엔 차체와 정확히 같은 면이라
+    // 바퀴가 몸통에 파묻혀 보였다(그리고 그 자체가 z-파이팅 거리였다).
+    w.position.set(sx * (spec.w * 0.5 - 0.06), wheelR, sz * spec.len * 0.32);
+    const roll = new THREE.Group();          // 구르기 전용 — 조향(w.rotation.y)과 섞이지 않게 분리
+    roll.add(new THREE.Mesh(treadG, tyre), new THREE.Mesh(rimG, rim), new THREE.Mesh(hubG, rim));
+    // 스포크가 있어야 도는 게 눈에 보인다. 다만 빠르면 스포크가 프레임보다 빨리 돌아
+    // 거꾸로 도는 것처럼 보이므로(마차바퀴 현상) 속도가 붙으면 서서히 지운다.
+    for (let i = 0; i < 5; i++) {
+      const sp = new THREE.Mesh(spokeG, spokeMat);
+      sp.rotation.x = (i / 5) * Math.PI;
+      roll.add(sp);
+    }
+    w.add(roll);
+    w.userData.roll = roll;
+    w.userData.front = sz > 0;
+    wheels.push(w);
     g.add(w);
   }
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -1333,35 +1447,56 @@ const WEATHER = [
 let weatherIdx = 0;
 const wMix = { fogMul: 1, rain: 0, light: 1, grip: 1, cloud: 0.22 };
 
-const RAIN_N = 4500;
+// ── 비: 점(Points)으로 뿌리면 동그란 알갱이라 눈처럼 보인다.
+//    빗방울은 빠르게 떨어져 눈에 '선'으로 남으므로 선분(LineSegments)으로 그린다.
+const RAIN_N = 4200, RAIN_LEN = 1.35, RAIN_SPD = 145;
 const rainGeo = new THREE.BufferGeometry();
-const rainPos = new Float32Array(RAIN_N * 3);
+const rainDrop = new Float32Array(RAIN_N * 3);        // 빗방울 머리 위치
+const rainVert = new Float32Array(RAIN_N * 6);        // 선분 양 끝(머리·꼬리)
 for (let i = 0; i < RAIN_N; i++) {
-  rainPos[i * 3] = (Math.random() - 0.5) * 240;
-  rainPos[i * 3 + 1] = Math.random() * 95;
-  rainPos[i * 3 + 2] = (Math.random() - 0.5) * 240;
+  rainDrop[i * 3]     = (Math.random() - 0.5) * 200;
+  rainDrop[i * 3 + 1] = Math.random() * 95;
+  rainDrop[i * 3 + 2] = (Math.random() - 0.5) * 200;
 }
-rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
-const rain = new THREE.Points(rainGeo, new THREE.PointsMaterial({
-  color: 0xc4d8e8, size: 0.45, transparent: true, opacity: 0, depthWrite: false }));
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainVert, 3));
+const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({
+  color: 0xaecbe2, transparent: true, opacity: 0, depthWrite: false }));
 rain.frustumCulled = false;
 scene.add(rain);
+
+// ── 눈: 이쪽이야말로 동그란 알갱이. 천천히 내리고 좌우로 흩날린다.
+const SNOW_N = 2200;
+const snowGeo = new THREE.BufferGeometry();
+const snowPos = new Float32Array(SNOW_N * 3);
+for (let i = 0; i < SNOW_N; i++) {
+  snowPos[i * 3]     = (Math.random() - 0.5) * 150;
+  snowPos[i * 3 + 1] = Math.random() * 70;
+  snowPos[i * 3 + 2] = (Math.random() - 0.5) * 150;
+}
+snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({
+  color: 0xffffff, size: 0.34, transparent: true, opacity: 0, depthWrite: false,
+  sizeAttenuation: true }));
+snow.frustumCulled = false;
+scene.add(snow);
 
 // ═══════════════════════════════════════════════════════════
 //  입력
 // ═══════════════════════════════════════════════════════════
 const keys = {};
 let camMode = 0, timeScale = 1, hudOn = true, lightsManual = null;
-const CAM_NAMES = ['체이스', '1인칭 실내', '시네마틱'];
+let autoDrive = false;      // Z — 도로를 따라 스스로 달린다
+const CAM_NAMES = ['체이스', '시네마틱'];   // 1인칭은 제거(2026-08-25)
 
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.repeat) return;
-  if (e.code === 'KeyC') { camMode = (camMode + 1) % 3; toast('시점 · ' + CAM_NAMES[camMode]); }
+  if (e.code === 'KeyC') { camMode = (camMode + 1) % 2; toast('시점 · ' + CAM_NAMES[camMode]); }
   if (e.code === 'KeyR') { weatherIdx = (weatherIdx + 1) % WEATHER.length; toast('날씨 · ' + WEATHER[weatherIdx].name); }
   if (e.code === 'KeyT') { timeScale = timeScale === 1 ? 12 : timeScale === 12 ? 60 : 1; toast('시간 ×' + timeScale); }
   if (e.code === 'KeyF') { lightsManual = lightsManual === null ? true : lightsManual ? false : null;
     toast('헤드라이트 · ' + (lightsManual === null ? '자동' : lightsManual ? '켬' : '끔')); }
+  if (e.code === 'KeyZ') { autoDrive = !autoDrive; toast('자동 주행 · ' + (autoDrive ? '켬' : '끔')); }
   if (e.code === 'KeyH') { hudOn = !hudOn; document.getElementById('hud').style.display = hudOn ? '' : 'none'; }
   if (e.code === 'KeyP') { postOn = !postOn && !!sceneRT; toast('화면 효과 · ' + (postOn ? '켬' : '끔')); }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -1386,9 +1521,11 @@ function toast(msg) { toastEl.textContent = msg; toastEl.style.opacity = 1; toas
 //  루프
 // ═══════════════════════════════════════════════════════════
 const car = { x: roadX(0), z: 0, y: 0, heading: 0, speed: 0, steer: 0, spin: 0 };
+let moveDir = 0;      // 실제 진행 방향 — heading 을 조금 늦게 따라온다(미끄럼)
 let dayTime = 10.0;                 // 환한 오전에서 시작
 const camPos = new THREE.Vector3(0, 20, -30), camLook = new THREE.Vector3();
 const _fwd = new THREE.Vector3(), _right = new THREE.Vector3(), _up = new THREE.Vector3();
+const nrmS = new THREE.Vector3(0, 1, 0);          // 완만하게 따라가는 차체 법선
 const _basis = new THREE.Matrix4();
 const zenith = new THREE.Color(), horizon = new THREE.Color(), fogCol = new THREE.Color();
 const sunDir = new THREE.Vector3();
@@ -1418,9 +1555,12 @@ let postOn = false;   // 각진 그래픽에는 후처리가 안 어울린다 (P
 function makeRT() {
   // 타깃은 선형(HalfFloat)으로 둔다. sRGB 로 굽는 건 후처리 셰이더의 toSRGB 한 곳에서만
   // 한다 — 여기서도 sRGB 로 두면 감마가 두 번 먹어 어두운 아스팔트가 하얗게 뜬다.
+  // ⚠ three 는 렌더타깃에 depthTexture 를 붙이면 MSAA(samples)를 못 쓴다.
+  //   그래서 후처리를 켜면 계단(에일리어싱)이 그대로 남아 차 모서리가 깨져 보였다.
+  //   → 타깃을 화면보다 RT_SS 배 크게 그린 뒤 화면 해상도로 줄여서(수퍼샘플링) 매끈하게 만든다.
   const rt = new THREE.WebGLRenderTarget(
-    Math.max(2, Math.floor(innerWidth * renderer.getPixelRatio())),
-    Math.max(2, Math.floor(innerHeight * renderer.getPixelRatio())),
+    Math.max(2, Math.floor(innerWidth * renderer.getPixelRatio() * RT_SS)),
+    Math.max(2, Math.floor(innerHeight * renderer.getPixelRatio() * RT_SS)),
     { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
       type: THREE.HalfFloatType, samples: 4 });
   rt.depthTexture = new THREE.DepthTexture(rt.width, rt.height, THREE.UnsignedIntType);
@@ -1460,7 +1600,12 @@ const postMat = new THREE.ShaderMaterial({
     void main(){
       float d = linDepth(vUv);
 
-      vec3 col = texture2D(tDiffuse, vUv).rgb;
+      // 큰 타깃을 화면 크기로 줄여 읽는다 — 네 점을 평균해 계단을 지운다
+      vec2 o = uTexel * 0.5;
+      vec3 col = (texture2D(tDiffuse, vUv + vec2( o.x,  o.y)).rgb +
+                  texture2D(tDiffuse, vUv + vec2(-o.x,  o.y)).rgb +
+                  texture2D(tDiffuse, vUv + vec2( o.x, -o.y)).rgb +
+                  texture2D(tDiffuse, vUv + vec2(-o.x, -o.y)).rgb) * 0.25;
       if (uBlur > 0.002) {                      // 화면 중심에서 바깥으로 몇 점 더 뽑아 섞는다
         vec2 dir = (vUv - 0.5) * uBlur;
         float w = 1.0;
@@ -1524,9 +1669,32 @@ function loop() {
   // ── 조작 · 물리
   const boost = keys.ShiftLeft || keys.ShiftRight;
   let throttle = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
-  const steerIn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0);
+  let steerIn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0);
 
-  const offRoad = Math.abs(car.x - roadX(car.z)) > ROAD_HALF;
+  // ── 자동 주행(Z) ──────────────────────────────────────────
+  // 순수 추종(pure pursuit): 앞쪽 일정 거리의 '차로 위 한 점'을 정하고 그쪽을 향하도록 꺾는다.
+  // 조향 입력을 만들어 낼 뿐이라 아래 물리는 손대지 않는다 = 사람이 몰 때와 똑같이 굴러간다.
+  if (autoDrive) {
+    if (throttle || steerIn) { autoDrive = false; toast('자동 주행 · 끔 (수동 조작)'); }
+    else {
+      // 빠를수록 멀리 본다 — 가까이만 보면 좌우로 갈지자를 그린다
+      const look = 11 + Math.abs(car.speed) * 0.62;
+      const tz = car.z + look;
+      const tdx = (roadX(tz + 1) - roadX(tz - 1)) / 2;
+      // 우측 차로 한가운데를 목표로 잡는다(중앙선 오른쪽)
+      const tx = roadX(tz) + (ROAD_HALF * 0.5) / Math.hypot(1, tdx);
+      let err = Math.atan2(tx - car.x, tz - car.z) - car.heading;
+      err = Math.atan2(Math.sin(err), Math.cos(err));      // -π~π 로 감아 준다
+      steerIn = Math.max(-1, Math.min(1, err * AUTO_GAIN));
+      // 커브가 급하면 미리 속도를 줄인다 — 코너 감속에 떠밀리지 않고 스스로 제어한다
+      const curve = Math.abs(roadX(car.z + 60) - 2 * roadX(car.z + 30) + roadX(car.z)) / 900;
+      const want = Math.min(CRUISE, AUTO_TOP / (1 + curve * AUTO_CURVE_SLOW));
+      throttle = Math.abs(car.speed) < want ? 1 : 0;
+    }
+  }
+
+  const carU = roadU(car.x, car.z);
+  const offRoad = Math.abs(carU) > ROAD_HALF;
   const inWater = car.y < seaY(car.z) + 0.6;
   const topSpeed = spec.top * (boost ? 1.2 : 1) * (offRoad ? 0.62 : 1) * (inWater ? 0.25 : 1);
   const gripNow = spec.grip * wMix.grip * (offRoad ? 0.72 : 1);
@@ -1542,31 +1710,88 @@ function loop() {
     car.speed *= Math.pow(inWater ? 0.25 : offRoad ? 0.55 : 0.86, dt);
   }
   const braking = keys.Space || (throttle < 0 && car.speed > 1);
-  if (keys.Space) car.speed *= Math.pow(0.12, dt);
+  if (keys.Space) {
+    // 지수 감쇠만 쓰면 0 에 점근할 뿐 끝내 멈추지 않아서 계속 앞으로 스멀스멀 갔다.
+    // 감쇠에 더해 일정한 제동력(BRAKE_FORCE)을 빼고, 아주 느려지면 완전히 세운다.
+    car.speed *= Math.pow(0.06, dt);
+    const drop = BRAKE_FORCE * dt;
+    car.speed = Math.abs(car.speed) <= drop ? 0
+              : car.speed - Math.sign(car.speed) * drop;
+  }
   car.speed = Math.max(-topSpeed * 0.35, Math.min(topSpeed, car.speed));
 
   const steerTarget = steerIn * Math.min(1, 26 / (Math.abs(car.speed) + 12));
   car.steer += (steerTarget - car.steer) * Math.min(1, dt * 7);
+
+  // ── 코너링 감속 ──────────────────────────────────────────
+  // 조향각이 정해지면 요레이트 ω = steer * 0.055 * grip * v 이고, 횡가속도는 a = v·ω 다.
+  // 즉 a = (steer*0.055*grip) * v². 타이어가 버틸 수 있는 한계 MAX_LAT 을 넘으면
+  // 그 코너를 그 속도로 돌 수 없다는 뜻 → 한계 속도까지 서서히 깎는다.
+  const yawK = Math.abs(car.steer) * 0.055;             // ω / v (그립과 무관한 기하 항)
+  if (yawK > 1e-4) {
+    // 한계는 그립에 비례한다 — 비가 오거나(wMix.grip) 흙길이면(offRoad) 더 일찍 감속
+    const cornerTop = Math.sqrt(MAX_LAT * gripNow / yawK);
+    const sp = Math.abs(car.speed);
+    if (sp > cornerTop) {
+      // 한계를 넘은 만큼만, 프레임레이트 독립으로 지수 감쇠시킨다
+      const over = sp - cornerTop;
+      car.speed -= Math.sign(car.speed) * over * (1 - Math.pow(CORNER_GRIP_FALL, dt));
+    }
+  }
+  // 한계 안쪽이라도 조향 중엔 타이어가 옆으로 긁히며 조금씩 속도를 잃는다
+  if (Math.abs(car.steer) > 0.01) car.speed *= Math.pow(1 - CORNER_SCRUB * Math.abs(car.steer), dt);
+
   car.heading += car.steer * car.speed * 0.055 * gripNow * dt;
-  car.x += Math.sin(car.heading) * car.speed * dt;
-  car.z += Math.cos(car.heading) * car.speed * dt;
+
+  // ── 살짝 미끄러지는 느낌 ────────────────────────────────
+  // 실제 진행 방향(moveDir)이 차가 향한 방향(heading)을 조금 늦게 따라온다.
+  // 그래서 코너 진입에서 차가 아주 살짝 바깥으로 흘렀다가 물린다.
+  // 그립이 낮을수록(비·흙길) 더 늦게 따라와 = 더 미끄럽다.
+  let dh = car.heading - moveDir;
+  dh = Math.atan2(Math.sin(dh), Math.cos(dh));        // -π~π 로 감아 준다
+  dh = Math.max(-SLIDE_MAX, Math.min(SLIDE_MAX, dh)); // 너무 벌어지면 붙잡는다
+  moveDir = car.heading - dh * Math.pow(SLIDE_HOLD, dt * gripNow);
+
+  car.x += Math.sin(moveDir) * car.speed * dt;
+  car.z += Math.cos(moveDir) * car.speed * dt;
   car.spin += car.speed * dt * 0.6;
 
-  const onRoadNow = Math.abs(car.x - roadX(car.z)) < ROAD_HALF;
-  const gy = terrainHeight(car.x, car.z) + (onRoadNow ? ROAD_LIFT : 0);
-  car.y += (gy - car.y) * Math.min(1, dt * 12);
-  if (car.y < gy) car.y = gy;              // 지면 아래로는 절대 내려가지 않는다
+  // 노면 lift 를 도로 메시와 같은 식으로 계산 → 갓길에서 부드럽게 0 이 되므로
+  // 도로를 벗어나는 순간 30cm 가 툭 꺼지던 현상이 없어진다.
+  const gy = terrainHeight(car.x, car.z) + roadLift(carU);
+  // 예전엔 `dt*12` 라 지면이 빠르게 꺼지는 곳(언덕 마루·급내리막·오프로드)에서
+  // 차가 지면을 못 따라가 공중에 뜬 채로 날아가 보였다. 감쇠를 프레임레이트 독립으로
+  // 바꾸고, 무엇보다 지면에서 뜰 수 있는 높이를 GROUND_SLACK 로 못 박는다.
+  car.y += (gy - car.y) * (1 - Math.pow(1e-6, dt));
+  car.y = Math.min(Math.max(car.y, gy), gy + GROUND_SLACK);
   const rumble = offRoad ? Math.sin(car.spin * 9) * 0.05 * Math.min(1, Math.abs(car.speed) / 20) : 0;
   carRoot.position.set(car.x, car.y + rumble, car.z);
 
-  const nrm = terrainNormal(car.x, car.z);
-  _up.copy(nrm);
+  // 지형 법선을 그대로 쓰면 잔주름 하나하나에 차체가 튀어 화면이 덜컹거린다.
+  // 실제 서스펜션처럼 시간을 두고 따라가게 한다(프레임레이트 독립).
+  _up.copy(terrainNormal(car.x, car.z));
+  nrmS.lerp(_up, 1 - Math.pow(BODY_SETTLE, dt)).normalize();
+  _up.copy(nrmS);
   _fwd.set(Math.sin(car.heading), 0, Math.cos(car.heading));
   _fwd.addScaledVector(_up, -_fwd.dot(_up)).normalize();
   _right.crossVectors(_up, _fwd).normalize();
   carRoot.quaternion.setFromRotationMatrix(_basis.makeBasis(_right, _up, _fwd));
   carRoot.rotateZ(-car.steer * Math.min(0.1, Math.abs(car.speed) * 0.0022));
   if (steerWheel) steerWheel.rotation.z = car.steer * 2.6;
+  // 바퀴 굴리기 — 구른 각도 = 이동거리 / 반지름. 앞바퀴는 조향각도 함께 준다.
+  wheelRoll = (wheelRoll + car.speed * dt / wheelRadius) % (Math.PI * 2);
+  if (spokeMat) {   // 시속 20~50km 구간에서 스포크를 지운다 → 빠를 땐 매끈한 원반으로 보인다
+    const o = 1 - smooth((Math.abs(car.speed) * 2.14 - 20) / 30);
+    spokeMat.opacity = o;
+    // 완전히 불투명할 땐 transparent 를 꺼 둔다 — 반투명 정렬이 매 프레임 흔들려 깜빡이는 걸 막는다
+    const wantT = o < 0.995;
+    if (spokeMat.transparent !== wantT) { spokeMat.transparent = wantT; spokeMat.needsUpdate = true; }
+    spokeMat.visible = o > 0.02;
+  }
+  for (const w of wheels) {
+    w.userData.roll.rotation.x = wheelRoll;
+    if (w.userData.front) w.rotation.y = car.steer * 0.5;
+  }
   brakeMats.forEach(m => m.emissiveIntensity += ((braking ? 2.4 : 0.35) - m.emissiveIntensity) * Math.min(1, dt * 12));
 
   updateChunks(car.x, car.z);
@@ -1575,6 +1800,8 @@ function loop() {
   scatterGrass(car.x, car.z);
   guardrails(car.z);
   roadUniforms.uWet.value = wMix.rain;
+  // 계기판 40km/h 부터 걷기 시작해 95km/h 에서 완전히 사라진다
+  detailU.value = 1 - smooth((Math.abs(car.speed) * 2.14 - 40) / 55);
   // 갓길이 이어질 땅 색을 지금 바이옴에 맞춘다 → 도로 메시와 지형 메시가 같은 색으로 만난다
   biomeColor(biomeAt(car.z), 'ground', roadUniforms.uGround.value);
   windU.uTime.value = elapsed * (1 + wMix.rain * 0.8);   // 비 오면 바람도 세진다
@@ -1612,8 +1839,22 @@ function loop() {
   // 밤에는 달빛이 반대편에서 은은하게 든다
   sun.intensity = 2.9 * day * grey + 0.5 * (1 - day);
   sun.color.setRGB(1, 0.92 - dusk * 0.22, 0.84 - dusk * 0.42).lerp(_c1.setRGB(0.66, 0.76, 1), 1 - day);
-  sun.position.copy(sunDir).multiplyScalar(day > 0.05 ? 340 : -340).add(carRoot.position);
-  sun.target.position.copy(carRoot.position);
+  // ── 그림자 맵 텍셀 스냅 ────────────────────────────────────
+  // 그림자 카메라가 차를 그냥 따라가면, 매 프레임 텍셀 크기보다 작게 움직이면서
+  // 그림자 경계가 픽셀 단위로 계속 재계산된다 → 화면이 지지직 끓어 보인다.
+  // 광원 좌표계에서 카메라 위치를 '텍셀 격자'에 딱 맞춰 반올림하면 멈춘다.
+  _sdir.copy(sunDir).multiplyScalar(day > 0.05 ? 1 : -1);
+  _sright.crossVectors(WORLD_UP, _sdir).normalize();
+  _sup.crossVectors(_sdir, _sright).normalize();
+  const texel = (2 * SH) / SHADOW_MAP;
+  const px = Math.round(carRoot.position.dot(_sright) / texel) * texel;
+  const py = Math.round(carRoot.position.dot(_sup) / texel) * texel;
+  const pz = carRoot.position.dot(_sdir);
+  _spos.copy(_sright).multiplyScalar(px)
+       .addScaledVector(_sup, py)
+       .addScaledVector(_sdir, pz);
+  sun.target.position.copy(_spos);
+  sun.position.copy(_spos).addScaledVector(_sdir, 340);
   hemi.intensity = 0.85 + 0.75 * day * grey;
   hemi.color.copy(horizon);
   // 땅에서 튄 빛 — 너무 어둡게 두면 그늘이 새까맣게 죽는다
@@ -1642,14 +1883,44 @@ function loop() {
     waterMat.uniforms.fogFar.value = scene.fog.far;
   }
 
-  // ── 비
-  rain.material.opacity = wMix.rain * 0.5;
-  if (wMix.rain > 0.01) {
+  // ── 비 · 눈 ────────────────────────────────────────────────
+  // 설원에서는 같은 강수가 눈으로 내린다. 두 개가 동시에 보이지 않게 서로 반대로 섞는다.
+  const snowK = snowFactor(car.z);
+  const rainAmt = wMix.rain * (1 - snowK);
+  const snowAmt = snowK * (0.30 + 0.70 * wMix.rain);   // 설원이면 늘 조금, 비 오는 날엔 펑펑
+
+  rain.material.opacity = rainAmt * 0.55;
+  rain.visible = rainAmt > 0.01;
+  if (rain.visible) {
     rain.position.set(car.x, car.y, car.z);
-    const p = rainGeo.attributes.position;
+    // 차가 달리면 빗줄기가 뒤로 기운다 — 앞유리로 쏟아지는 그 느낌
+    const tiltX = -Math.sin(car.heading) * car.speed * 0.010;
+    const tiltZ = -Math.cos(car.heading) * car.speed * 0.010;
     for (let i = 0; i < RAIN_N; i++) {
-      let y = p.getY(i) - dt * 95;
-      if (y < 0) { y += 95; p.setX(i, (Math.random() - 0.5) * 240); p.setZ(i, (Math.random() - 0.5) * 240); }
+      let y = rainDrop[i * 3 + 1] - dt * RAIN_SPD;
+      if (y < 0) {
+        y += 95;
+        rainDrop[i * 3]     = (Math.random() - 0.5) * 200;
+        rainDrop[i * 3 + 2] = (Math.random() - 0.5) * 200;
+      }
+      rainDrop[i * 3 + 1] = y;
+      const x = rainDrop[i * 3], z = rainDrop[i * 3 + 2], o = i * 6;
+      rainVert[o]     = x;                    rainVert[o + 1] = y;             rainVert[o + 2] = z;
+      rainVert[o + 3] = x + tiltX * RAIN_LEN; rainVert[o + 4] = y - RAIN_LEN;  rainVert[o + 5] = z + tiltZ * RAIN_LEN;
+    }
+    rainGeo.attributes.position.needsUpdate = true;
+  }
+
+  snow.material.opacity = snowAmt * 0.85;
+  snow.visible = snowAmt > 0.01;
+  if (snow.visible) {
+    snow.position.set(car.x, car.y, car.z);
+    const p = snowGeo.attributes.position;
+    for (let i = 0; i < SNOW_N; i++) {
+      let y = p.getY(i) - dt * (5.5 + (i % 7) * 0.5);          // 알갱이마다 낙하 속도가 다르다
+      if (y < 0) { y += 70; p.setX(i, (Math.random() - 0.5) * 150); p.setZ(i, (Math.random() - 0.5) * 150); }
+      // 좌우로 흩날린다 — 알갱이마다 위상을 달리해 한 덩어리로 움직이지 않게
+      p.setX(i, p.getX(i) + Math.sin(elapsed * 0.9 + i * 0.7) * dt * 1.6);
       p.setY(i, y);
     }
     p.needsUpdate = true;
@@ -1657,12 +1928,12 @@ function loop() {
 
   // ── 카메라
   const sp = Math.abs(car.speed);
-  interior.visible = camMode === 1;
-  if (camMode !== 1) camera.up.set(0, 1, 0);
+  interior.visible = false;          // 1인칭이 없어져 실내는 항상 숨긴다
+  camera.up.set(0, 1, 0);
 
   if (camMode === 0) {
     // 차 바로 뒤·낮은 눈높이. 속도가 붙으면 아주 조금만 뒤로 밀린다.
-    const back = 5.9 + Math.min(2.2, sp * 0.055) + (boost ? 0.5 : 0);
+    const back = 5.9 + Math.min(0.8, sp * 0.02) + (boost ? 0.5 : 0);   // 속도로 뒤로 밀리는 양을 줄였다
     const up   = 1.95 + Math.min(0.5, sp * 0.009);
     camPos.lerp(_pos.set(car.x - Math.sin(car.heading) * back, car.y + up,
       car.z - Math.cos(car.heading) * back), Math.min(1, dt * 4.2));
@@ -1672,11 +1943,6 @@ function loop() {
       car.z + Math.cos(car.heading) * 22), Math.min(1, dt * 3.4));
     camera.position.copy(camPos);
     camera.lookAt(camLook);
-  } else if (camMode === 1) {
-    camera.position.copy(eyePoint).applyMatrix4(carRoot.matrixWorld);
-    camera.up.copy(_up);
-    camera.lookAt(_pos.copy(eyePoint).setZ(eyePoint.z + 30).setX(eyePoint.x + car.steer * 3)
-      .applyMatrix4(carRoot.matrixWorld));
   } else {
     const t = elapsed * 0.11;
     camPos.lerp(_pos.set(car.x + Math.sin(t) * 17, car.y + 4.5 + Math.sin(t * 2.3) * 1.6,
@@ -1685,7 +1951,8 @@ function loop() {
     camera.position.copy(camPos);
     camera.lookAt(car.x, car.y + 1, car.z);
   }
-  camera.fov = (camMode === 1 ? 68 : 55) + Math.min(7, sp * 0.10) * (boost ? 1.4 : 1);
+  // 화각을 크게 벌리면 앞이 작아져 '화면이 뒤로 밀리는' 것처럼 보인다 → 부스트 감각용으로만 조금
+  camera.fov = 55 + Math.min(4, sp * 0.06) * (boost ? 1.5 : 1);
   camera.updateProjectionMatrix();
   sky.position.copy(camera.position);
 
@@ -1696,6 +1963,7 @@ function loop() {
     const bname = bl.k < 0.5 ? bl.a.name : bl.b.name;
     // 필요한 것만: 주행 거리 · 지금 지나는 풍경 · 시각
     infoEl.innerHTML =
+      (autoDrive ? '<b>AUTO</b><i>·</i>' : '') +
       `${(Math.abs(car.z) / 1000).toFixed(1)} km<i>·</i>${bname}<i>·</i>` +
       `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     if (toastT > 0 && (toastT -= dt) <= 0) toastEl.style.opacity = 0;
@@ -1705,9 +1973,11 @@ function loop() {
   if (postOn && sceneRT) {
     postMat.uniforms.uNear.value = camera.near;
     postMat.uniforms.uFar.value = camera.far;
-    // 시속 90km 를 넘어서부터만 아주 옅게. 천천히 달릴 땐 완전히 선명하다.
-    const blurT = Math.max(0, (sp * 3.6 - 90) / 90);
-    postMat.uniforms.uBlur.value = Math.min(0.028, blurT * 0.028) * (camMode === 1 ? 0.6 : 1);
+    // 계기판 기준 90km/h 를 넘어서부터만 아주 옅게. 천천히 달릴 땐 완전히 선명하다.
+    // (예전엔 sp*3.6 = 실제 168km/h 로 재서 순항만 해도 블러가 최대치로 걸렸고,
+    //  그게 1인칭에서 화면이 뭉개져 안 보이던 원인이었다. 계기판과 같은 2.14 로 맞춘다.)
+    const blurT = Math.max(0, (sp * 2.14 - 90) / 90);
+    postMat.uniforms.uBlur.value = Math.min(0.028, blurT * 0.028);
     try {
       renderer.setRenderTarget(sceneRT);
       renderer.render(scene, camera);
