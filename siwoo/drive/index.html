@@ -88,7 +88,7 @@ const BIOMES = [
   { name: '초원',    ground: 0x7a9f57, rock: 0x8d8d80, hill: 1.0, trees: 0.5,  treeTop: 0x4e7f45, treeH: 1.0, haze: 0xbcd2e6, grass: 1.0,  conif: 0.15, cactus: 0    },
   { name: '침엽수림', ground: 0x557a4a, rock: 0x74766c, hill: 1.6, trees: 0.95, treeTop: 0x2c5238, treeH: 1.5, haze: 0xaec6dc, grass: 0.55, conif: 0.9,  cactus: 0    },
   { name: '사막',    ground: 0xcbae7c, rock: 0xb1946a, hill: 0.7, trees: 0.30, treeTop: 0x6f7f4c, treeH: 0.7, haze: 0xdcc8a4, grass: 0.10, conif: 0.0,  cactus: 0.92 },
-  { name: '설원',    ground: 0xdde6ee, rock: 0x949da6, hill: 1.3, trees: 0.38, treeTop: 0x36564b, treeH: 1.2, haze: 0xd0dde9, grass: 0.22, conif: 0.85, cactus: 0    },
+  { name: '설원',    ground: 0xf4f8fc, rock: 0xc3ccd6, hill: 1.3, trees: 0.38, treeTop: 0x36564b, treeH: 1.2, haze: 0xe6f0f8, grass: 0.10, conif: 0.85, cactus: 0    },
   { name: '해안',    ground: 0x93ac74, rock: 0xa39d90, hill: 0.55, trees: 0.3, treeTop: 0x517f52, treeH: 1.1, haze: 0xc3dcea, grass: 0.7,  conif: 0.2,  cactus: 0    },
 ];
 const BIOME_LEN = 3400;
@@ -125,7 +125,9 @@ function snowFactor(z) {
   if (u < 0) u += BIOMES.length;
   let d = Math.abs(u - 3);
   d = Math.min(d, BIOMES.length - d);
-  const t = Math.max(0, 1 - d);
+  // 설원(3) 바로 옆이 사막(2)이라, 예전처럼 바이옴 한 칸(d<1) 전체에 눈을 뿌리면
+  // HUD 가 아직 '사막'인 구간까지 눈이 내린다. 이름이 설원으로 바뀌는 d<0.5 안쪽으로 좁힌다.
+  const t = Math.max(0, 1 - d * 2.1);
   return t * t * (3 - 2 * t);
 }
 
@@ -792,6 +794,25 @@ const cactusGeo = (() => {
 })();
 const CACTUS_MAX = 220;
 
+// 배럴 선인장 — 땅에 붙은 통 모양. 능선은 세그먼트를 적게 줘서 각지게 낸다.
+const cactusBarrelGeo = (() => {
+  const g = new THREE.CylinderGeometry(0.52, 0.44, 0.78, 8, 1).translate(0, 0.39, 0);
+  const top = new THREE.SphereGeometry(0.52, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2)
+    .translate(0, 0.78, 0);                                // 윗면을 둥글게 덮는다
+  return mergeGeos([g, top]);
+})();
+const BARREL_MAX = 120;
+
+// 기둥 군락 — 팔 없이 굵기·높이가 제각각인 대가 모여 자란다
+const cactusColGeo = (() => {
+  const parts = [];
+  const set = [[0, 0, 0.28, 3.4], [0.46, 0.18, 0.21, 2.4], [-0.38, -0.26, 0.17, 1.7]];
+  for (const [x, z, r, h] of set)
+    parts.push(new THREE.CylinderGeometry(r * 0.88, r, h, 8, 1).translate(x, h / 2, z));
+  return mergeGeos(parts);
+})();
+const COL_MAX = 90;
+
 // 바위 — 정12면체를 그대로 쓰면 너무 규칙적이라 정점을 흩어 놓는다
 const rockGeo = new THREE.BoxGeometry(2.2, 1.6, 2.0);
 {
@@ -862,6 +883,8 @@ const bushes  = mkInst(bushGeo, broadLeafMat, BUSH_MAX);
 const deads   = mkInst(deadGeo, new THREE.MeshLambertMaterial({ color: 0x7c6a53, flatShading: true }), DEAD_MAX);
 const stumps  = mkInst(stumpGeo, new THREE.MeshLambertMaterial({ color: 0x6b543f, flatShading: true }), STUMP_MAX);
 const cacti   = mkInst(cactusGeo, new THREE.MeshLambertMaterial({ color: 0x4f7a43, flatShading: true }), CACTUS_MAX);
+const cactiB  = mkInst(cactusBarrelGeo, new THREE.MeshLambertMaterial({ color: 0x5c8248, flatShading: true }), BARREL_MAX);
+const cactiC  = mkInst(cactusColGeo,    new THREE.MeshLambertMaterial({ color: 0x47703d, flatShading: true }), COL_MAX);
 
 for (const m of [leavesB, leavesC, bushes])
   m.instanceColor = new THREE.InstancedBufferAttribute(
@@ -882,7 +905,7 @@ function scatter(px, pz) {
   if (key === scatterKey) return;
   scatterKey = key;
 
-  let ci = 0, bi = 0, ri = 0, ui = 0, di = 0, si = 0, ki = 0;
+  let ci = 0, bi = 0, ri = 0, ui = 0, di = 0, si = 0, ki = 0, kb = 0, kc = 0;
   for (let i = -SCAT_R; i <= SCAT_R; i++) {
     for (let j = -SCAT_R; j <= SCAT_R; j++) {
       const dd2 = i * i + j * j;
@@ -925,8 +948,9 @@ function scatter(px, pz) {
       _q.setFromEuler(_eul);
 
       if (r < dens) {
+        const cactusP = biomeNum(bl, 'cactus');     // 사막일수록 1 에 가깝다
         const kind = hash2(gx + 909, gz + 55);
-        if (kind < 0.06 && di < DEAD_MAX) {          // 죽은 나무
+        if (kind < 0.06 && di < DEAD_MAX && cactusP < 0.55) {   // 죽은 나무 — 사막엔 세우지 않는다
           const s = (0.8 + hash2(gx + 5, gz + 9) * 0.6) * biomeNum(bl, 'treeH') * tFade;
           _pos.set(wx, y - 0.3, wz);                 // 밑동을 땅에 묻는다
           _scl.set(s * wv, s * hv, s * wv);
@@ -934,15 +958,36 @@ function scatter(px, pz) {
           deads.setMatrixAt(di++, _m4);
           continue;
         }
-        // 사막에서는 나무 대신 선인장이 선다
-        if (hash2(gx + 555, gz + 222) < biomeNum(bl, 'cactus') && ki < CACTUS_MAX) {
+        // 사막에서는 나무 대신 선인장이 선다 — 한 종류만 쓰면 복붙 티가 나서 3종을 섞는다
+        if (hash2(gx + 555, gz + 222) < cactusP) {
           const s = (0.75 + hash2(gx + 27, gz + 63) * 0.7) * tFade;
-          _pos.set(wx, y - 0.15, wz);
-          _scl.set(s * wv, s * hv, s * wv);
-          _m4.compose(_pos, _q, _scl);
-          cacti.setMatrixAt(ki++, _m4);
-          continue;
+          const kind = hash2(gx + 77, gz + 404);
+          if (kind < 0.30 && kb < BARREL_MAX) {              // 배럴 — 땅에 붙어 있어 조금 더 크게
+            const sb = s * 1.15;
+            _pos.set(wx, y - 0.10, wz);
+            _scl.set(sb * wv, sb * hv, sb * wv);
+            _m4.compose(_pos, _q, _scl);
+            cactiB.setMatrixAt(kb++, _m4);
+            continue;
+          }
+          if (kind < 0.55 && kc < COL_MAX) {                 // 기둥 군락
+            _pos.set(wx, y - 0.15, wz);
+            _scl.set(s * wv, s * hv, s * wv);
+            _m4.compose(_pos, _q, _scl);
+            cactiC.setMatrixAt(kc++, _m4);
+            continue;
+          }
+          if (ki < CACTUS_MAX) {                             // 팔 달린 사와로
+            _pos.set(wx, y - 0.15, wz);
+            _scl.set(s * wv, s * hv, s * wv);
+            _m4.compose(_pos, _q, _scl);
+            cacti.setMatrixAt(ki++, _m4);
+            continue;
+          }
         }
+        // 사막에는 나무가 자라지 않는다 — 선인장에 안 걸린 자리는 그냥 빈 땅.
+        // cactusP 로 걸러서 바이옴 경계에서는 나무가 서서히 사라진다.
+        if (cactusP > 0.55) continue;
         const conif = hash2(gx + 301, gz + 77) < biomeNum(bl, 'conif');
         const trunkM = conif ? trunksC : trunksB;
         const leafM  = conif ? leavesC : leavesB;
@@ -962,7 +1007,7 @@ function scatter(px, pz) {
           (hash2(gz + 5, gx + 5) - 0.5) * 0.20);
         // 설원에서는 잎에 눈이 얹힌 느낌 — 나무마다 쌓인 양을 다르게 흩는다
         const snowK = snowFactor(wz);
-        if (snowK > 0.01) _tmp.lerp(WHITE, snowK * (0.42 + hash2(gx + 88, gz + 12) * 0.38));
+        if (snowK > 0.01) _tmp.lerp(WHITE, snowK * (0.62 + hash2(gx + 88, gz + 12) * 0.34));
         leafM.setColorAt(idx, _tmp);
         if (conif) ci++; else bi++;
       } else if (r < dens + 0.10 * clumpK && si < STUMP_MAX && hash2(gx + 4, gz + 4) < 0.25) {
@@ -982,7 +1027,7 @@ function scatter(px, pz) {
         biomeColor(bl, 'treeTop', _tmp).offsetHSL(0,
           (hash2(gx, gz + 9) - 0.5) * 0.20, (hash2(gx + 9, gz) - 0.5) * 0.20);
         const bSnow = snowFactor(wz);
-        if (bSnow > 0.01) _tmp.lerp(WHITE, bSnow * (0.45 + hash2(gx + 6, gz + 66) * 0.35));
+        if (bSnow > 0.01) _tmp.lerp(WHITE, bSnow * (0.68 + hash2(gx + 6, gz + 66) * 0.30));
         bushes.setColorAt(ui, _tmp);
         ui++;
       } else if (r > 0.955 && ri < ROCK_MAX) {
@@ -1002,7 +1047,9 @@ function scatter(px, pz) {
   for (let k = di; k < DEAD_MAX;  k++) deads.setMatrixAt(k, _m4);
   for (let k = si; k < STUMP_MAX; k++) stumps.setMatrixAt(k, _m4);
   for (let k = ki; k < CACTUS_MAX; k++) cacti.setMatrixAt(k, _m4);
-  for (const m of [trunksC, leavesC, trunksB, leavesB, rocks, bushes, deads, stumps, cacti])
+  for (let k = kb; k < BARREL_MAX; k++) cactiB.setMatrixAt(k, _m4);
+  for (let k = kc; k < COL_MAX;    k++) cactiC.setMatrixAt(k, _m4);
+  for (const m of [trunksC, leavesC, trunksB, leavesB, rocks, bushes, deads, stumps, cacti, cactiB, cactiC])
     m.instanceMatrix.needsUpdate = true;
   leavesC.instanceColor.needsUpdate = true;
   leavesB.instanceColor.needsUpdate = true;
