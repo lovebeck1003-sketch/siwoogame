@@ -1,9 +1,9 @@
 """
-점프맵 실행기 (Python) — love 계정(lovebeck1003-sketch/jumpmap)의 실제 게임을 파이썬으로 띄운다.
+시우 게임 실행기 (Python) — love 계정(lovebeck1003-sketch/jumpmap)의 게임들을 파이썬으로 띄운다.
 
-원본 게임은 Three.js 3D 웹 게임(../siwoo/pc/jumpmap.html)이다.
+원본 게임들은 Three.js 3D 웹 게임(점프맵 · 좀비 FPS · 무한 드라이브)이다.
 이 스크립트는 파이썬 표준 라이브러리만으로 로컬 서버를 열고
-실제 점프맵을 기본 브라우저로 실행한다. (추가 설치 불필요)
+게임을 기본 브라우저로 실행한다. (추가 설치 불필요)
 
 사용법:
     python run.py            # PC 버전(siwoo/pc/jumpmap.html) 실행
@@ -84,7 +84,7 @@ def main():
         sys.exit(1)
 
     url = f"http://127.0.0.1:{port}/{page}"
-    print("점프맵 서버 시작 (love 계정: lovebeck1003-sketch/jumpmap)")
+    print("SIWOO GAMES 서버 시작 (love 계정: lovebeck1003-sketch/jumpmap)")
     print(f"  실행 파일 : {page}")
     print(f"  주소      : {url}")
     print("  종료      : Ctrl+C")
