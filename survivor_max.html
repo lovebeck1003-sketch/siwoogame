@@ -9,7 +9,7 @@
   html,body { width:100%; height:100%; background:#07070c; overflow:hidden;
     font-family:'Malgun Gothic','맑은 고딕',sans-serif; color:#e8e8f0; user-select:none; }
   #wrap { position:relative; width:100vw; height:100vh; }
-  canvas { display:block; width:100%; height:100%; image-rendering:pixelated; cursor:none; }
+  canvas { display:block; width:100%; height:100%; image-rendering:pixelated; }
   .overlay canvas, body.ui canvas { cursor:default; }
 
   .overlay { position:absolute; inset:0; display:flex; flex-direction:column;
@@ -67,6 +67,15 @@
     background:#1e2a1e; color:#9be39b; border:1px solid #4e7a4e; border-radius:4px; cursor:pointer; }
   .shopcard button:disabled { background:#1a1a28; color:#60667c; border-color:#33334a; cursor:default; }
   .gold { color:#ffd36b; font-size:17px; letter-spacing:1px; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .tab { padding:7px 18px; font-family:inherit; font-size:14px; letter-spacing:1px; cursor:pointer;
+    background:#151524; color:#8a90a8; border:2px solid #33334e; border-radius:6px; }
+  .tab.on { background:#2a2440; color:#ffd36b; border-color:#ffd36b; }
+  .shopcard.eq { border-color:#ffd36b; box-shadow:0 0 14px rgba(255,211,107,.25); }
+  .shopcard .ds .bad { color:#ff8a9a; }
+  .shopcard button.eqb { background:#2a2440; color:#ffd36b; border-color:#7a6a3a; }
+  .shopcard button.uneq { background:#1a1a28; color:#aab0c8; border-color:#4b4b70; }
+  #gearbar { font-size:13px; color:#c6ccdf; letter-spacing:1px; }
 
   /* HUD */
   #hud { position:absolute; inset:0; pointer-events:none; z-index:5; }
@@ -139,23 +148,25 @@
   <div id="title" class="overlay">
     <h1>SURVIVOR</h1>
     <div id="best"></div>
+    <div id="gearbar"></div>
     <div class="sub">
       <kbd>WASD</kbd>/<kbd>방향키</kbd> 이동 · <kbd>Space</kbd> 대시 · <kbd>P</kbd> 일시정지 · <kbd>M</kbd> 음소거<br>
-      <b style="color:#aee9ff">마우스 조준 + 좌클릭(또는 Shift) 유지</b>로 원거리 사격 — 그 외 무기는 <b>자동</b><br>
+      <b style="color:#aee9ff">모든 공격은 자동</b> — 가장 가까운 적을 알아서 노린다<br>
       <b>일반 공격 하나</b>로 시작해, 보석을 모아 레벨업하며 무기를 늘려라<br>
       무기를 <b style="color:#d79bff">만렙</b> 찍으면 바로 <b style="color:#d79bff">진화</b> · 패시브도 만렙이면 <b style="color:#ffd36b">특별 보너스</b>
     </div>
     <div class="row" style="margin-top:14px">
       <button class="btn" id="startBtn">게임 시작</button>
-      <button class="btn ghost" id="shopBtn">🪙 강화 상점</button>
+      <button class="btn ghost" id="shopBtn">🪙 상점</button>
     </div>
   </div>
 
   <!-- 상점 -->
   <div id="shop" class="overlay hidden">
-    <h2>강 화 상 점</h2>
+    <h2>상 점</h2>
     <div class="gold" id="shopGold">🪙 0</div>
-    <div class="sub">여기서 산 강화는 <b>영구히</b> 유지됩니다</div>
+    <div class="tabs" id="shopTabs"></div>
+    <div class="sub" id="shopSub"></div>
     <div class="cards" id="shopList"></div>
     <div class="row">
       <button class="btn" id="shopClose">돌아가기</button>
@@ -281,11 +292,11 @@ function bgmTick(dt, intensity) {
 
 // ══════════════════════════ 저장 데이터 ══════════════════════════
 const SAVE_KEY = 'survivor_save_maxtest';
-const SV = { gold:0, best:0, bestKills:0, meta:{}, muted:false };
+const SV = { gold:0, best:0, bestKills:0, meta:{}, owned:{}, equip:{}, muted:false };
 function load() {
   try {
     const o = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
-    Object.assign(SV, o); SV.meta = o.meta || {};
+    Object.assign(SV, o); SV.meta = o.meta || {}; SV.owned = o.owned || {}; SV.equip = o.equip || {};
   } catch (e) {}
   A.muted = !!SV.muted;
 }
@@ -304,13 +315,60 @@ const META = {
 };
 const mLv = k => SV.meta[k] || 0;
 
+// ══════════════════════════ 장비 ══════════════════════════
+// 한 번 사면 계속 보유 · 칸마다 1개씩 장착
+// 능력치: dmg 피해% · cdr 공격 속도% · crit 치명타% · hp 최대 체력 · def 받는 피해 감소%
+//         spd 이동 속도% · dash 대시 쿨다운 감소% · regen 초당 회복 · mag 수집 범위%
+//         gold 골드% · xp 경험치% · steal 처치 시 회복
+const SLOTS = { weapon:'무기', armor:'갑옷', acc:'장신구' };
+const GEAR = {
+  sword:   { slot:'weapon', ico:'🗡️', nm:'낡은 검',       cost:80,   st:{ dmg:.08 } },
+  bow:     { slot:'weapon', ico:'🏹', nm:'사냥꾼의 활',   cost:200,  st:{ dmg:.10, crit:.05 } },
+  staff:   { slot:'weapon', ico:'🪄', nm:'마법사 지팡이', cost:350,  st:{ cdr:.15 } },
+  great:   { slot:'weapon', ico:'⚔️', nm:'용사의 대검',   cost:600,  st:{ dmg:.25, spd:-.05 } },
+  axe:     { slot:'weapon', ico:'🪓', nm:'광전사의 도끼', cost:900,  st:{ dmg:.40, def:-.12 } },
+  holy:    { slot:'weapon', ico:'✨', nm:'전설의 성검',   cost:1500, st:{ dmg:.30, cdr:.15, crit:.10 } },
+  leather: { slot:'armor',  ico:'🧥', nm:'가죽 갑옷',     cost:80,   st:{ hp:20 } },
+  chain:   { slot:'armor',  ico:'⛓️', nm:'사슬 갑옷',     cost:220,  st:{ hp:30, def:.08 } },
+  cloak:   { slot:'armor',  ico:'🧣', nm:'바람의 망토',   cost:400,  st:{ spd:.10, dash:.15 } },
+  plate:   { slot:'armor',  ico:'🛡️', nm:'판금 갑옷',     cost:500,  st:{ hp:20, def:.18, spd:-.06 } },
+  robe:    { slot:'armor',  ico:'👘', nm:'생명의 로브',   cost:700,  st:{ hp:40, regen:1 } },
+  dragon:  { slot:'armor',  ico:'🐉', nm:'용비늘 갑옷',   cost:1400, st:{ hp:60, def:.20 } },
+  coin:    { slot:'acc',    ico:'🪙', nm:'행운의 동전',   cost:100,  st:{ gold:.30 } },
+  ring:    { slot:'acc',    ico:'💍', nm:'자석 반지',     cost:150,  st:{ mag:.40 } },
+  neck:    { slot:'acc',    ico:'📿', nm:'지혜의 목걸이', cost:300,  st:{ xp:.20 } },
+  eye:     { slot:'acc',    ico:'👁️', nm:'독수리의 눈',   cost:450,  st:{ crit:.12 } },
+  fang:    { slot:'acc',    ico:'🦷', nm:'흡혈귀 송곳니', cost:800,  st:{ steal:1 } },
+  glass:   { slot:'acc',    ico:'⏳', nm:'시간의 모래시계', cost:1200, st:{ cdr:.20, dash:.20 } },
+};
+const pct = v => (v >= 0 ? '+' : '-') + Math.round(Math.abs(v)*100) + '%';
+const ST_NM = {
+  dmg:v=>`피해 ${pct(v)}`, cdr:v=>`공격 속도 ${pct(v)}`, crit:v=>`치명타 ${pct(v)}`,
+  hp:v=>`최대 체력 +${v}`, spd:v=>`이동 속도 ${pct(v)}`, dash:v=>`대시 쿨다운 -${Math.round(v*100)}%`,
+  def:v=>v >= 0 ? `받는 피해 -${Math.round(v*100)}%` : `받는 피해 +${Math.round(-v*100)}%`,
+  regen:v=>`초당 체력 ${v} 회복`, mag:v=>`수집 범위 ${pct(v)}`, gold:v=>`골드 ${pct(v)}`,
+  xp:v=>`경험치 ${pct(v)}`, steal:v=>`처치 시 체력 ${v} 회복`,
+};
+const gearDesc = g => Object.entries(g.st)
+  .map(([k, v]) => v < 0 ? `<span class="bad">${ST_NM[k](v)}</span>` : ST_NM[k](v)).join(' · ');
+// 장착한 장비의 능력치 합계 — 판을 시작할 때 계산
+let GS = {};
+function calcGear() {
+  GS = {};
+  for (const sl in SLOTS) {
+    const g = GEAR[SV.equip[sl]];
+    if (g) for (const k in g.st) GS[k] = (GS[k]||0) + g.st[k];
+  }
+}
+const gs = k => GS[k] || 0;
+
 // ══════════════════════════ 시작 스탯 ══════════════════════════
 const BASE = { hp:100, spd:172 };
 
 // ══════════════════════════ 업그레이드 / 진화 ══════════════════════════
 const UPGRADES = {
   shot:   { kind:'weapon', basic:true, ico:'🏹', nm:'조준 사격', max:8,
-    ds:lv=>`마우스 조준 수동 사격 · ${lv>=6?3:lv>=3?2:1}발 · 피해 ${12+lv*7} · 관통 ${1+Math.floor(lv/3)}` },
+    ds:lv=>`가까운 적에게 자동 사격 · ${lv>=6?3:lv>=3?2:1}발 · 피해 ${12+lv*7} · 관통 ${1+Math.floor(lv/3)}` },
   knife:  { kind:'weapon', ico:'🗡️', nm:'마법 단검', max:8,
     ds:lv=>`가장 가까운 적에게 단검 ${1+Math.floor(lv/2)}발 · 피해 ${8+lv*4}` },
   orbit:  { kind:'weapon', ico:'🔮', nm:'수호 구체', max:8,
@@ -326,7 +384,7 @@ const UPGRADES = {
   rang:   { kind:'weapon', ico:'🪃', nm:'부메랑', max:8,
     ds:lv=>`갔다가 돌아오며 모두 관통 · ${1+Math.floor(lv/4)}개 · 피해 ${16+lv*7}` },
   laser:  { kind:'weapon', ico:'🔦', nm:'레이저', max:8,
-    ds:lv=>`조준 방향으로 관통 광선 · 굵기 ${10+lv*2} · 피해 ${30+lv*12}` },
+    ds:lv=>`가까운 적 방향으로 관통 광선 · 굵기 ${10+lv*2} · 피해 ${30+lv*12}` },
   frost:  { kind:'weapon', ico:'❄️', nm:'냉기 파동', max:8,
     ds:lv=>`주변 적을 느리게(50%) · 반경 ${110+lv*14} · 피해 ${8+lv*4}` },
   dmg:    { kind:'passive', ico:'🔥', nm:'공격력', max:8, ds:lv=>`모든 피해 +${lv*12}%`,
@@ -370,11 +428,12 @@ const isMax = k => (S.up[k]||0) >= UPGRADES[k].max;   // 패시브 만렙 보너
 const S = {};
 function reset() {
   S.state = 'play';
-  S.t = 0; S.kills = 0; S.lvl = 1; S.xp = 0; S.xpNeed = 5;
+  S.t = 0; S.kills = 0; S.lvl = 1; S.xp = 0; S.xpNeed = 4;
   S.gold = 0; S.dmgDone = 0;
   S.shake = 0; S.flash = 0; S.flashC = '255,80,110';
   S.cam = { x:0, y:0 };
-  const maxhp = BASE.hp + mLv('mhp') * 12;
+  calcGear();
+  const maxhp = BASE.hp + mLv('mhp') * 12 + gs('hp');
   S.p = {
     x:0, y:0, r:13, hp:maxhp, maxhp, spd:BASE.spd,
     inv:0, face:1, bob:0, dead:false,
@@ -394,12 +453,12 @@ function reset() {
 }
 
 // 파생 스탯
-const dmgMul = () => (1 + (S.up.dmg||0)*0.12) * (1 + mLv('mdmg')*0.05) * (isMax('dmg') ? 1.25 : 1);
-const cdMul  = () => 1 / ((1 + (S.up.cdr||0)*0.10) * (isMax('cdr') ? 1.25 : 1));
-const spdMul = () => (1 + (S.up.spd||0)*0.09) * (1 + mLv('mspd')*0.04);
-const magMul = () => isMax('mag') ? 40 : (1 + (S.up.mag||0)*0.35) * (1 + mLv('mmag')*0.18);
-const critChance = () => (S.up.luck||0)*0.06;
-const dashCdMax = () => 3.2 * (1 - mLv('mdash')*0.12) * (isMax('spd') ? 0.5 : 1);
+const dmgMul = () => (1 + (S.up.dmg||0)*0.12) * (1 + mLv('mdmg')*0.05) * (1 + gs('dmg')) * (isMax('dmg') ? 1.25 : 1);
+const cdMul  = () => 1 / ((1 + (S.up.cdr||0)*0.10) * (1 + gs('cdr')) * (isMax('cdr') ? 1.25 : 1));
+const spdMul = () => (1 + (S.up.spd||0)*0.09) * (1 + mLv('mspd')*0.04) * (1 + gs('spd'));
+const magMul = () => isMax('mag') ? 40 : (1 + (S.up.mag||0)*0.35) * (1 + mLv('mmag')*0.18) * (1 + gs('mag'));
+const critChance = () => (S.up.luck||0)*0.06 + gs('crit');
+const dashCdMax = () => 3.2 * (1 - mLv('mdash')*0.12) * (1 - gs('dash')) * (isMax('spd') ? 0.5 : 1);
 const extra = () => S.up.amount||0;                        // 다중 투사체
 const extraPierce = () => isMax('amount') ? 2 : 0;
 
@@ -484,7 +543,7 @@ function nearestEnemy(from, exclude) {
   }
   return best;
 }
-// 마우스 조준 수동 사격
+// 가장 가까운 적에게 자동 사격
 function fireShot() {
   const lv = S.up.shot, evo = isEvo('shot'); if (!lv) return;
   const count = (evo ? 5 : (lv >= 6 ? 3 : lv >= 3 ? 2 : 1)) + extra();
@@ -609,7 +668,7 @@ function fireRang() {
   }
   tone(420, .12, 'sine', .06, 700);
 }
-// 레이저: 조준 방향으로 화면을 가로지르는 광선
+// 레이저: 가장 가까운 적 방향으로 화면을 가로지르는 광선
 function fireLaser() {
   const lv = S.up.laser, evo = isEvo('laser'); if (!lv) return;
   const w = (10 + lv*2) * (evo ? 2 : 1), dmg = (30 + lv*12) * (evo ? 2 : 1), len = 760;
@@ -659,6 +718,7 @@ function killEnemy(e) {
   const i = S.enemies.indexOf(e); if (i < 0) return;
   S.enemies.splice(i, 1);
   S.kills++;
+  if (gs('steal') && !S.p.dead) S.p.hp = Math.min(S.p.maxhp, S.p.hp + gs('steal'));
   particles(e.x, e.y, e.boss ? 60 : 12, e.c, e.boss ? 320 : 170, .6, e.boss ? 5 : 3);
   if (e.boss) {
     S.boss = null; S.shake = 20; S.flash = .4; S.flashC = '255,220,120';
@@ -683,7 +743,7 @@ function dropCoin(x, y) {
 }
 function hurtPlayer(amount) {
   if (S.p.inv > 0 || S.p.dead) return;
-  amount *= 1 - (S.up.armor||0)*0.07;
+  amount *= (1 - (S.up.armor||0)*0.07) * (1 - gs('def'));
   S.p.hp -= amount;
   if (isMax('armor')) {   // 방어구 만렙: 반격 충격파
     S.zaps.push({ kind:'nova', x:S.p.x, y:S.p.y, r:0, max:130, l:.3, ml:.3, evo:true });
@@ -710,10 +770,10 @@ function hurtPlayer(amount) {
 
 // ══════════════════════════ 레벨업 / 진화 ══════════════════════════
 function gainXP(v) {
-  S.xp += v * (1 + (S.up.growth||0)*0.12);
+  S.xp += v * (1 + (S.up.growth||0)*0.12 + gs('xp'));
   while (S.xp >= S.xpNeed) {
     S.xp -= S.xpNeed; S.lvl++;
-    S.xpNeed = Math.round(5 + S.lvl*3.1 + Math.pow(S.lvl, 1.42));
+    S.xpNeed = Math.round((5 + S.lvl*3.1 + Math.pow(S.lvl, 1.42)) * 0.8);   // 레벨업 필요 경험치 20% 감소
     S.pendingLevels++;
     if (isMax('growth')) S.p.hp = S.p.maxhp;
   }
@@ -844,7 +904,7 @@ function update(dt) {
   S.cam.y += (p.y - S.cam.y) * Math.min(1, dt*8);
 
   // 재생
-  const regenRate = (S.up.regen||0)*0.6 * (isMax('regen') ? 2 : 1);
+  const regenRate = (S.up.regen||0)*0.6 * (isMax('regen') ? 2 : 1) + gs('regen');
   if (regenRate > 0) {
     S.timers.regen += dt;
     if (S.timers.regen >= 1) { S.timers.regen -= 1; p.hp = Math.min(p.maxhp, p.hp + regenRate); }
@@ -871,12 +931,13 @@ function update(dt) {
   }
   if (S.t >= S.nextBoss && !S.boss) { spawnBoss(); S.nextBoss += 60; }
 
-  // ── 조준 방향 갱신 (마우스 또는 이동 방향) ──
-  const amx = M.x + S.cam.x - W/2, amy = M.y + S.cam.y - H/2;
-  let ax = amx - p.x, ay = amy - p.y;
-  const al = Math.hypot(ax, ay);
-  if (M.inside && al > 1) { S.aim.x = ax/al; S.aim.y = ay/al; }
-  else if (len > 0) { S.aim.x = dx; S.aim.y = dy; }
+  // ── 조준 방향 갱신 (가장 가까운 적, 없으면 이동 방향) ──
+  const tgt = nearestEnemy(p);
+  const hasTgt = tgt && dist2(tgt, p) < 560*560;
+  if (hasTgt) {
+    const al = Math.hypot(tgt.x - p.x, tgt.y - p.y) || 1;
+    S.aim.x = (tgt.x - p.x)/al; S.aim.y = (tgt.y - p.y)/al;
+  } else if (len > 0) { S.aim.x = dx; S.aim.y = dy; }
   S.recoil = Math.max(0, S.recoil - dt);
 
   // ── 무기 ──
@@ -884,9 +945,8 @@ function update(dt) {
   if (S.up.shot) {
     S.timers.shot += dt;
     const iv = (isEvo('shot') ? 0.14 : 0.28) * cd;
-    const autoFire = keys['shift'] || M.down;   // 좌클릭 유지 또는 Shift 연사
-    if (S.timers.shot >= iv) {
-      if (autoFire) { S.timers.shot = 0; fireShot(); }
+    if (S.timers.shot >= iv) {   // 가까운 적이 있으면 자동 연사
+      if (hasTgt) { S.timers.shot = 0; fireShot(); }
       else S.timers.shot = iv;
     }
   }
@@ -1031,7 +1091,7 @@ function update(dt) {
     }
     if (d2 < (p.r + g.r + 4)**2) {
       if (g.coin) {
-        const amt = Math.round(1 * (1 + mLv('mgold')*0.25));
+        const amt = Math.round(1 * (1 + mLv('mgold')*0.25 + gs('gold')));
         S.gold += amt;
         popText(g.x, g.y - 10, '+' + amt, '#ffd36b');
         tone(1320, .07, 'square', .05, 1760);
@@ -1329,23 +1389,6 @@ function render() {
     ctx.fillRect(0, -3, 15, 6);
     ctx.fillStyle = '#6b7490'; ctx.fillRect(-3, -4.5, 6, 9);
     ctx.restore();
-    // 크로스헤어
-    if (M.inside) {
-      const cx = M.x + S.cam.x - W/2, cy = M.y + S.cam.y - H/2;
-      ctx.save();
-      ctx.strokeStyle = ready ? 'rgba(170,235,255,.95)' : 'rgba(120,150,170,.55)';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cx, cy, 11 + (ready?0:3), 0, TAU); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(cx-17, cy); ctx.lineTo(cx-6, cy);
-      ctx.moveTo(cx+6, cy);  ctx.lineTo(cx+17, cy);
-      ctx.moveTo(cx, cy-17); ctx.lineTo(cx, cy-6);
-      ctx.moveTo(cx, cy+6);  ctx.lineTo(cx, cy+17);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,.9)';
-      ctx.fillRect(cx-1, cy-1, 2, 2);
-      ctx.restore();
-    }
   }
 
   // 데미지 텍스트
@@ -1410,10 +1453,46 @@ function renderTitle() {
   $('best').textContent = SV.best > 0
     ? `최고 기록  ${fmtTime(SV.best)}  ·  최다 처치 ${SV.bestKills}  ·  보유 🪙 ${SV.gold}`
     : `보유 🪙 ${SV.gold}`;
+  const eq = Object.keys(SLOTS).map(sl => GEAR[SV.equip[sl]]).filter(Boolean);
+  $('gearbar').textContent = eq.length ? '장비  ' + eq.map(g => g.ico + ' ' + g.nm).join('  ·  ') : '';
 }
+let shopTab = 'weapon';
+const TABS = { weapon:'⚔️ 무기', armor:'🛡️ 갑옷', acc:'💍 장신구', train:'📘 훈련' };
 function renderShop() {
   $('shopGold').textContent = `🪙 ${SV.gold}`;
+  const tabs = $('shopTabs'); tabs.innerHTML = '';
+  for (const t in TABS) {
+    const el = document.createElement('button');
+    el.className = 'tab' + (t === shopTab ? ' on' : '');
+    el.textContent = TABS[t];
+    el.onclick = () => { shopTab = t; renderShop(); };
+    tabs.appendChild(el);
+  }
+  $('shopSub').innerHTML = shopTab === 'train'
+    ? '여기서 한 훈련은 <b>영구히</b> 유지됩니다'
+    : `장비는 한 번 사면 계속 보유 · <b>${SLOTS[shopTab]}</b> 칸에는 <b>1개</b>만 장착`;
   const box = $('shopList'); box.innerHTML = '';
+  if (shopTab === 'train') { renderTrain(box); return; }
+  for (const id in GEAR) {
+    const g = GEAR[id]; if (g.slot !== shopTab) continue;
+    const own = !!SV.owned[id], on = SV.equip[g.slot] === id, can = SV.gold >= g.cost;
+    const el = document.createElement('div');
+    el.className = 'shopcard' + (on ? ' eq' : own ? '' : can ? ' can' : '');
+    el.innerHTML = `<div class="top"><span class="nm">${g.ico} ${g.nm}</span>
+        <span class="ds">${on ? '장착 중' : own ? '보유' : ''}</span></div>
+      <div class="ds">${gearDesc(g)}</div>
+      <button class="${on ? 'uneq' : own ? 'eqb' : ''}" ${!own && !can ? 'disabled' : ''}>${
+        on ? '장착 해제' : own ? '장착하기' : `🪙 ${g.cost} 에 구매`}</button>`;
+    el.querySelector('button').onclick = () => {
+      if (on) delete SV.equip[g.slot];
+      else if (own) SV.equip[g.slot] = id;
+      else if (can) { SV.gold -= g.cost; SV.owned[id] = true; SV.equip[g.slot] = id; SFX.buy(); }
+      save(); renderShop(); renderTitle();
+    };
+    box.appendChild(el);
+  }
+}
+function renderTrain(box) {
   for (const k in META) {
     const m = META[k], lv = mLv(k), maxed = lv >= m.max, cost = m.cost(lv);
     const can = !maxed && SV.gold >= cost;
@@ -1424,7 +1503,7 @@ function renderShop() {
     el.innerHTML = `<div class="top"><span class="nm">${m.ico} ${m.nm}</span>
         <span class="pip">${pips}</span></div>
       <div class="ds">${m.ds}</div>
-      <button ${maxed || !can ? 'disabled' : ''}>${maxed ? 'MAX' : `🪙 ${cost} 에 강화`}</button>`;
+      <button ${maxed || !can ? 'disabled' : ''}>${maxed ? 'MAX' : `🪙 ${cost} 에 훈련`}</button>`;
     if (!maxed && can) el.querySelector('button').onclick = () => {
       SV.gold -= cost; SV.meta[k] = lv + 1; save(); SFX.buy(); renderShop(); renderTitle();
     };
@@ -1515,8 +1594,8 @@ $('retryBtn').onclick = toTitle;
 $('shopBtn').onclick = () => { initAudio(); renderShop(); $('title').classList.add('hidden'); $('shop').classList.remove('hidden'); };
 $('shopClose').onclick = () => { $('shop').classList.add('hidden'); $('title').classList.remove('hidden'); renderTitle(); };
 $('shopReset').onclick = () => {
-  if (!confirm('모든 골드·강화·기록을 삭제합니다. 계속할까요?')) return;
-  SV.gold = 0; SV.best = 0; SV.bestKills = 0; SV.meta = {}; save();
+  if (!confirm('모든 골드·장비·훈련·기록을 삭제합니다. 계속할까요?')) return;
+  SV.gold = 0; SV.best = 0; SV.bestKills = 0; SV.meta = {}; SV.owned = {}; SV.equip = {}; save();
   renderShop(); renderTitle();
 };
 
