@@ -291,7 +291,10 @@ function bgmTick(dt, intensity) {
 }
 
 // ══════════════════════════ 저장 데이터 ══════════════════════════
-const SAVE_KEY = 'survivor_save_v1';
+// ?max=1 로 열면 만렙 테스트 모드 (전부 만렙 · 75분 난이도 · 세이브 분리)
+const MAX_TEST = new URLSearchParams(location.search).has('max');
+if (MAX_TEST) document.title = 'SURVIVOR (만렙 테스트)';
+const SAVE_KEY = MAX_TEST ? 'survivor_save_maxtest' : 'survivor_save_v1';
 const SV = { gold:0, best:0, bestKills:0, meta:{}, owned:{}, equip:{}, muted:false };
 function load() {
   try {
@@ -1546,7 +1549,11 @@ function startGame() {
   $('shop').classList.add('hidden');
   $('gameover').classList.add('hidden');
   $('hud').classList.remove('hidden');
-  if (S.pendingLevels > 0) openLevelUp();
+  if (MAX_TEST) {
+    for (const k in UPGRADES) while (!isMax(k)) applyUpgrade(k, false, false);   // 테스트: 전부 만렙
+    S.pendingLevels = 0; S.state = 'play'; S.p.hp = S.p.maxhp; renderSlots();
+    S.t = 4500; S.nextBoss = 4560;   // 테스트: 75분 시점 난이도로 시작
+  } else if (S.pendingLevels > 0) openLevelUp();
 }
 function togglePause() {
   if (S.state === 'play') {

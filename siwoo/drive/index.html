@@ -64,7 +64,7 @@
 <div id="hud">
   <div id="help">
     <kbd>W</kbd><kbd>S</kbd> 가속·브레이크 &nbsp; <kbd>A</kbd><kbd>D</kbd> 조향 &nbsp; <kbd>Shift</kbd> 부스트 &nbsp; <kbd>Space</kbd> 정지<br>
-    <kbd>Z</kbd> 자동 주행 &nbsp; <kbd>C</kbd> 시점 &nbsp; <kbd>R</kbd> 날씨 &nbsp; <kbd>T</kbd> 시간 &nbsp; <kbd>F</kbd> 헤드라이트 &nbsp; <kbd>P</kbd> 화면효과 &nbsp; <kbd>V</kbd> 탈것 &nbsp; <kbd>H</kbd> UI
+    <kbd>C</kbd> 시점 &nbsp; <kbd>R</kbd> 날씨 &nbsp; <kbd>T</kbd> 시간 &nbsp; <kbd>F</kbd> 헤드라이트 &nbsp; <kbd>P</kbd> 화면효과 &nbsp; <kbd>H</kbd> UI
   </div>
   <div id="bottom">
     <div id="speed">0<span>km/h</span></div>
@@ -147,8 +147,6 @@ const BODY_SETTLE = 0.002;   // 차체가 지형 기울기를 따라가는 감�
 // 진행 방향이 차 방향을 따라오는 지연 — 작을수록 착 붙고, 키우면 더 미끄럽다
 const SLIDE_HOLD = 0.0009;   // 1초(그립 1 기준)에 남는 어긋남 비율
 const SLIDE_MAX  = 0.30;     // 최대 미끄럼 각도(rad) ≈ 17°
-// 자동 주행 — 조향 이득 / 목표 속도 / 커브에서 줄이는 정도
-const AUTO_GAIN = 2.6, AUTO_TOP = 46.7, AUTO_CURVE_SLOW = 26;
 const RT_SS = 1.4;           // 후처리 렌더타깃 배율(수퍼샘플링). 낮추면 가볍고 거칠어진다
 const BRAKE_FORCE = 18;      // 브레이크(스페이스) 감속도 m/s² — 크면 더 빨리 선다
 const GROUND_SLACK = 0.06;  // 차가 지면 위로 뜰 수 있는 최대 높이(서스펜션 여유)
@@ -1268,13 +1266,8 @@ function updateRoad(pz) {
 // ═══════════════════════════════════════════════════════════
 //  차량 (외장 + 실내)
 // ═══════════════════════════════════════════════════════════
-const CARS = [
-  { name: '스포츠',   kind: 'car',   color: 0xc9453c, len: 4.5, w: 1.95, h: 1.1, top: 46.7, acc: 34, grip: 1.15 },
-  // 오토바이 — 가볍고 잘 나가지만 접지면이 좁다. lean 으로 코너에서 깊게 눕는다.
-  { name: '오토바이', kind: 'bike',  color: 0x1d4e89, len: 2.1, w: 0.74, h: 1.15, top: 50.0, acc: 42, grip: 1.02, lean: 3.4 },
-  // 트럭 — 굼뜨고 잘 밀린다. 대신 눈높이가 높아 풍경이 다르게 보인다.
-  { name: '트럭',     kind: 'truck', color: 0x2f6d8f, len: 7.2, w: 2.45, h: 2.9, top: 33.0, acc: 14, grip: 0.82 },
-];
+// 탈것은 이 한 대뿐이다.
+const CAR = { name: '스포츠', color: 0xc9453c, len: 4.5, w: 1.95, h: 1.1, top: 46.7, acc: 34, grip: 1.15 };
 
 // 모서리를 둥글린 상자. 각 정점을 안쪽 상자에 붙인 뒤 반지름만큼 밀어내면 된다.
 // 하이라이트가 모서리를 타고 흐르기 시작해서 플라스틱 블록 느낌이 사라진다.
@@ -1307,7 +1300,7 @@ function disposeTree(root) {
   });
 }
 
-// 바퀴 한 벌을 찍어내는 틀. 자동차 · 오토바이 · 트럭이 같이 쓴다.
+// 바퀴 한 벌을 찍어내는 틀.
 // 실린더는 기본 축이 Y 라 미리 Z 로 90° 눕혀 축을 X(좌우)에 맞춘다.
 // 그러면 바퀴 그룹의 rotation.x = 구르기, rotation.y = 조향으로 깔끔하게 갈린다.
 function wheelKit(wheelR, width) {
@@ -1547,211 +1540,12 @@ function buildCar(spec) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
-//  오토바이
-// ═══════════════════════════════════════════════════════════
-// 1인칭이 없으므로(2026-08-25 제거) 라이더를 차체에 같이 세운다 — 늘 보인다.
-function buildBike(spec) {
-  clearVehicle();
-  const g = new THREE.Group();
-
-  const paint  = new THREE.MeshPhysicalMaterial({ color: spec.color, roughness: 0.34, metalness: 0.6,
-    clearcoat: 1.0, clearcoatRoughness: 0.06, envMapIntensity: 1.15 });
-  const trim   = new THREE.MeshStandardMaterial({ color: 0x1e1f24, roughness: 0.55, metalness: 0.35 });
-  const chrome = new THREE.MeshStandardMaterial({ color: 0xb6bcc2, roughness: 0.2,  metalness: 0.95 });
-  const lamp   = new THREE.MeshStandardMaterial({ color: 0xfff6dd, emissive: 0xfff0c8, emissiveIntensity: 1.2 });
-  const suit   = new THREE.MeshStandardMaterial({ color: 0x27303f, roughness: 0.9 });
-  const helmetM= new THREE.MeshPhysicalMaterial({ color: 0xe8e4dc, roughness: 0.28, metalness: 0.1, clearcoat: 1.0 });
-  const visor  = new THREE.MeshPhysicalMaterial({ color: 0x1b232b, roughness: 0.06, metalness: 0.2,
-    transparent: true, opacity: 0.72 });
-
-  const wheelR = 0.34, wb = 0.74;          // 반지름 · 앞뒤 바퀴 사이 거리의 절반
-  const mk = wheelKit(wheelR, 0.15);
-  const front = mk(0, wheelR, wb, true);
-  const rear  = mk(0, wheelR, -wb, false);
-  g.add(front, rear);
-
-  // ── 앞바퀴 그룹에 매단 것들은 조향과 함께 돌아간다(구르기와는 분리돼 있다)
-  for (const sx of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.66, 0.05), chrome);
-    leg.position.set(sx * 0.1, 0.30, 0.03);
-    leg.rotation.x = -0.20;
-    front.add(leg);
-  }
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.05, 0.05), trim);
-  bar.position.set(0, 0.63, -0.07);
-  front.add(bar);
-  for (const sx of [-1, 1]) {              // 그립
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.062, 0.062), suit);
-    grip.position.set(sx * 0.28, 0.63, -0.07);
-    front.add(grip);
-  }
-  const head = new THREE.Mesh(roundedBox(0.30, 0.22, 0.16, 0.06), lamp);
-  head.position.set(0, 0.50, 0.10);
-  front.add(head);
-  const fender = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.5), paint);
-  fender.position.set(0, wheelR * 0.86, 0.02);
-  front.add(fender);
-
-  // ── 몸통
-  const bodyY = wheelR;
-  const frame = new THREE.Mesh(roundedBox(0.24, 0.28, 1.34, 0.09), trim);
-  frame.position.set(0, bodyY + 0.30, 0);
-  const engine = new THREE.Mesh(roundedBox(0.42, 0.36, 0.46, 0.07), chrome);
-  engine.position.set(0, bodyY + 0.12, 0.04);
-  const tank = new THREE.Mesh(roundedBox(0.38, 0.30, 0.68, 0.13), paint);
-  tank.position.set(0, bodyY + 0.54, 0.22);
-  const seat = new THREE.Mesh(roundedBox(0.32, 0.14, 0.62, 0.06), suit);
-  seat.position.set(0, bodyY + 0.58, -0.34);
-  const tailFender = new THREE.Mesh(roundedBox(0.26, 0.16, 0.44, 0.07), paint);
-  tailFender.position.set(0, bodyY + 0.50, -0.66);
-  g.add(frame, engine, tank, seat, tailFender);
-
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.09, 0.07), brakeMat());
-  tail.position.set(0, bodyY + 0.56, -0.86);
-  g.add(tail);
-
-  for (const sx of [-1, 1]) {              // 배기관
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.9, 10).rotateX(Math.PI / 2), chrome);
-    pipe.position.set(sx * 0.17, bodyY - 0.04, -0.3);
-    g.add(pipe);
-  }
-
-  // ── 라이더
-  const torso = new THREE.Mesh(roundedBox(0.42, 0.52, 0.30, 0.11), suit);
-  torso.position.set(0, bodyY + 0.94, -0.20);
-  torso.rotation.x = 0.34;                 // 탱크 쪽으로 숙인 자세
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 14), helmetM);
-  helmet.position.set(0, bodyY + 1.26, -0.06);
-  const vis = new THREE.Mesh(new THREE.SphereGeometry(0.172, 16, 14,
-    Math.PI * 0.15, Math.PI * 0.7, Math.PI * 0.34, Math.PI * 0.3), visor);
-  vis.position.copy(helmet.position);
-  vis.rotation.y = Math.PI / 2;
-  g.add(torso, helmet, vis);
-  for (const sx of [-1, 1]) {
-    const arm = new THREE.Mesh(roundedBox(0.12, 0.12, 0.62, 0.05), suit);
-    arm.position.set(sx * 0.21, bodyY + 0.94, 0.16);
-    arm.rotation.x = -0.30;
-    const thigh = new THREE.Mesh(roundedBox(0.16, 0.17, 0.44, 0.06), suit);
-    thigh.position.set(sx * 0.17, bodyY + 0.62, -0.28);
-    const shin = new THREE.Mesh(roundedBox(0.14, 0.40, 0.15, 0.05), suit);
-    shin.position.set(sx * 0.2, bodyY + 0.30, -0.10);
-    g.add(arm, thigh, shin);
-  }
-
-  addHeadlight(0, bodyY + 0.5, 0.9, 0);
-
-  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  carRoot.add(g);
-  carBody = g;
-
-  interior = new THREE.Group();            // 오토바이엔 실내가 없다. 다른 코드가 기대하므로 빈 채로 둔다
-  carRoot.add(interior);
-  eyePoint.set(0, bodyY + 1.2, -0.06);
-}
-
-// ═══════════════════════════════════════════════════════════
-//  트럭
-// ═══════════════════════════════════════════════════════════
-function buildTruck(spec) {
-  clearVehicle();
-  const g = new THREE.Group();
-
-  const paint  = new THREE.MeshPhysicalMaterial({ color: spec.color, roughness: 0.42, metalness: 0.5,
-    clearcoat: 0.8, clearcoatRoughness: 0.1, envMapIntensity: 1.05 });
-  const trim   = new THREE.MeshStandardMaterial({ color: 0x1e1f24, roughness: 0.55, metalness: 0.35 });
-  const chrome = new THREE.MeshStandardMaterial({ color: 0xb6bcc2, roughness: 0.2, metalness: 0.95 });
-  const glass  = new THREE.MeshPhysicalMaterial({ color: 0x9ec2d8, roughness: 0.04, metalness: 0.0,
-    transparent: true, opacity: 0.34, envMapIntensity: 2.0, side: THREE.DoubleSide });
-  const lamp   = new THREE.MeshStandardMaterial({ color: 0xfff6dd, emissive: 0xfff0c8, emissiveIntensity: 1.2 });
-  const canvasM= new THREE.MeshStandardMaterial({ color: 0xd9d4c6, roughness: 0.92, metalness: 0.0 });
-
-  const wheelR = 0.56, W = spec.w, L = spec.len;
-  const mk = wheelKit(wheelR, 0.34);
-  const axleX = W * 0.5 - 0.1;
-  // 앞 한 축 + 뒤 두 축. 뒤 축을 가까이 붙여 화물차 느낌을 낸다.
-  for (const sx of [-1, 1]) {
-    g.add(mk(sx * axleX, wheelR,  L * 0.34, true));
-    g.add(mk(sx * axleX, wheelR, -L * 0.20, false));
-    g.add(mk(sx * axleX, wheelR, -L * 0.34, false));
-  }
-
-  const frameY = wheelR + 0.34;
-  const chassis = new THREE.Mesh(new THREE.BoxGeometry(W * 0.82, 0.26, L * 0.94), trim);
-  chassis.position.y = frameY;
-  g.add(chassis);
-
-  // ── 운전실 (앞쪽)
-  const cabL = L * 0.30, cabZ = L * 0.32;
-  const cabH = spec.h * 0.62;
-  const cabY = frameY + 0.13 + cabH / 2;
-  const cab = new THREE.Mesh(roundedBox(W, cabH, cabL, 0.16), paint);
-  cab.position.set(0, cabY, cabZ);
-  const wind = new THREE.Mesh(new THREE.BoxGeometry(W * 0.86, cabH * 0.42, 0.1), glass);
-  wind.position.set(0, cabY + cabH * 0.18, cabZ + cabL * 0.5);
-  for (const sx of [-1, 1]) {                       // 옆 유리
-    const sw = new THREE.Mesh(new THREE.BoxGeometry(0.08, cabH * 0.36, cabL * 0.5), glass);
-    sw.position.set(sx * W * 0.5, cabY + cabH * 0.16, cabZ);
-    g.add(sw);
-  }
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(W * 0.8, 0.42, 0.12), trim);
-  grille.position.set(0, frameY + 0.28, cabZ + cabL * 0.5 + 0.02);
-  const bump = new THREE.Mesh(new THREE.BoxGeometry(W * 1.02, 0.28, 0.24), chrome);
-  bump.position.set(0, frameY - 0.14, cabZ + cabL * 0.5 + 0.04);
-  g.add(cab, wind, grille, bump);
-
-  // ── 짐칸 (뒤쪽) — 옆판 + 천막 지붕
-  const boxL = L * 0.52, boxZ = -L * 0.20;
-  const boxH = spec.h * 0.56;
-  const boxY = frameY + 0.13 + boxH / 2;
-  const box = new THREE.Mesh(new THREE.BoxGeometry(W * 1.02, boxH, boxL), paint);
-  box.position.set(0, boxY, boxZ);
-  const tarp = new THREE.Mesh(roundedBox(W * 1.04, 0.34, boxL * 0.98, 0.15), canvasM);
-  tarp.position.set(0, boxY + boxH / 2 + 0.1, boxZ);
-  const backDoor = new THREE.Mesh(new THREE.BoxGeometry(W * 0.98, boxH * 0.9, 0.08), trim);
-  backDoor.position.set(0, boxY, boxZ - boxL * 0.5 - 0.02);
-  g.add(box, tarp, backDoor);
-
-  // ── 등 · 거울 · 배기 굴뚝
-  for (const sx of [-1, 1]) {
-    const l = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.24, 0.12), lamp);
-    l.position.set(sx * W * 0.34, frameY + 0.02, cabZ + cabL * 0.5 + 0.06);
-    g.add(l);
-    addHeadlight(sx * W * 0.34, frameY, cabZ + cabL * 0.5 + 0.1, sx * 3);
-
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.34, 0.1), brakeMat());
-    t.position.set(sx * W * 0.38, frameY + 0.3, boxZ - boxL * 0.5 - 0.06);
-    g.add(t);
-
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.05), trim);
-    arm.position.set(sx * (W * 0.5 + 0.1), cabY + cabH * 0.2, cabZ + cabL * 0.42);
-    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.42, 0.16), trim);
-    mirror.position.set(sx * (W * 0.5 + 0.2), cabY + cabH * 0.14, cabZ + cabL * 0.42);
-    g.add(arm, mirror);
-
-    const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, spec.h * 0.75, 10), chrome);
-    stack.position.set(sx * (W * 0.5 - 0.02), cabY + cabH * 0.1, cabZ - cabL * 0.5 - 0.06);
-    g.add(stack);
-  }
-
-  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  carRoot.add(g);
-  carBody = g;
-
-  interior = new THREE.Group();
-  carRoot.add(interior);
-  eyePoint.set(-W * 0.24, cabY + 0.1, cabZ);
-}
-
-// 어떤 탈것이든 이 하나로 세운다
+// 차를 세운다
 function buildVehicle(spec) {
-  if (spec.kind === 'bike') buildBike(spec);
-  else if (spec.kind === 'truck') buildTruck(spec);
-  else buildCar(spec);
+  buildCar(spec);
 }
 
-let carIdx = 0;
-buildVehicle(CARS[0]);
+buildVehicle(CAR);
 
 // ═══════════════════════════════════════════════════════════
 //  날씨
@@ -1803,7 +1597,6 @@ scene.add(snow);
 // ═══════════════════════════════════════════════════════════
 const keys = {};
 let camMode = 0, timeScale = 1, hudOn = true, lightsManual = null;
-let autoDrive = false;      // Z — 도로를 따라 스스로 달린다
 const CAM_NAMES = ['체이스', '시네마틱'];   // 1인칭은 제거(2026-08-25)
 
 addEventListener('keydown', e => {
@@ -1814,9 +1607,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyT') { timeScale = timeScale === 1 ? 12 : timeScale === 12 ? 60 : 1; toast('시간 ×' + timeScale); }
   if (e.code === 'KeyF') { lightsManual = lightsManual === null ? true : lightsManual ? false : null;
     toast('헤드라이트 · ' + (lightsManual === null ? '자동' : lightsManual ? '켬' : '끔')); }
-  if (e.code === 'KeyZ') { autoDrive = !autoDrive; toast('자동 주행 · ' + (autoDrive ? '켬' : '끔')); }
-  if (e.code === 'KeyV') { carIdx = (carIdx + 1) % CARS.length; buildVehicle(CARS[carIdx]);
-    car.speed = Math.min(car.speed, CARS[carIdx].top); toast('탈것 · ' + CARS[carIdx].name); }
   if (e.code === 'KeyH') { hudOn = !hudOn; document.getElementById('hud').style.display = hudOn ? '' : 'none'; }
   if (e.code === 'KeyP') { postOn = !postOn && !!sceneRT; toast('화면 효과 · ' + (postOn ? '켬' : '끔')); }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -1981,37 +1771,15 @@ function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.05);
   elapsed += dt;
-  const spec = CARS[carIdx];
+  const spec = CAR;
 
   const w = WEATHER[weatherIdx];
   for (const k in wMix) wMix[k] += (w[k] - wMix[k]) * Math.min(1, dt * 0.7);
 
   // ── 조작 · 물리
   const boost = keys.ShiftLeft || keys.ShiftRight;
-  let throttle = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
-  let steerIn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0);
-
-  // ── 자동 주행(Z) ──────────────────────────────────────────
-  // 순수 추종(pure pursuit): 앞쪽 일정 거리의 '차로 위 한 점'을 정하고 그쪽을 향하도록 꺾는다.
-  // 조향 입력을 만들어 낼 뿐이라 아래 물리는 손대지 않는다 = 사람이 몰 때와 똑같이 굴러간다.
-  if (autoDrive) {
-    if (throttle || steerIn) { autoDrive = false; toast('자동 주행 · 끔 (수동 조작)'); }
-    else {
-      // 빠를수록 멀리 본다 — 가까이만 보면 좌우로 갈지자를 그린다
-      const look = 11 + Math.abs(car.speed) * 0.62;
-      const tz = car.z + look;
-      const tdx = (roadX(tz + 1) - roadX(tz - 1)) / 2;
-      // 우측 차로 한가운데를 목표로 잡는다(중앙선 오른쪽)
-      const tx = roadX(tz) + (ROAD_HALF * 0.5) / Math.hypot(1, tdx);
-      let err = Math.atan2(tx - car.x, tz - car.z) - car.heading;
-      err = Math.atan2(Math.sin(err), Math.cos(err));      // -π~π 로 감아 준다
-      steerIn = Math.max(-1, Math.min(1, err * AUTO_GAIN));
-      // 커브가 급하면 미리 속도를 줄인다 — 코너 감속에 떠밀리지 않고 스스로 제어한다
-      const curve = Math.abs(roadX(car.z + 60) - 2 * roadX(car.z + 30) + roadX(car.z)) / 900;
-      const want = Math.min(CRUISE, AUTO_TOP / (1 + curve * AUTO_CURVE_SLOW));
-      throttle = Math.abs(car.speed) < want ? 1 : 0;
-    }
-  }
+  const throttle = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+  const steerIn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0);
 
   const carU = roadU(car.x, car.z);
   const offRoad = Math.abs(carU) > ROAD_HALF;
@@ -2096,7 +1864,7 @@ function loop() {
   _fwd.addScaledVector(_up, -_fwd.dot(_up)).normalize();
   _right.crossVectors(_up, _fwd).normalize();
   carRoot.quaternion.setFromRotationMatrix(_basis.makeBasis(_right, _up, _fwd));
-  carRoot.rotateZ(-car.steer * Math.min(0.1, Math.abs(car.speed) * 0.0022) * (spec.lean || 1));
+  carRoot.rotateZ(-car.steer * Math.min(0.1, Math.abs(car.speed) * 0.0022));
   if (steerWheel) steerWheel.rotation.z = car.steer * 2.6;
   // 바퀴 굴리기 — 구른 각도 = 이동거리 / 반지름. 앞바퀴는 조향각도 함께 준다.
   wheelRoll = (wheelRoll + car.speed * dt / wheelRadius) % (Math.PI * 2);
@@ -2283,7 +2051,6 @@ function loop() {
     const bname = bl.k < 0.5 ? bl.a.name : bl.b.name;
     // 필요한 것만: 주행 거리 · 지금 지나는 풍경 · 시각
     infoEl.innerHTML =
-      (autoDrive ? '<b>AUTO</b><i>·</i>' : '') +
       `${(Math.abs(car.z) / 1000).toFixed(1)} km<i>·</i>${bname}<i>·</i>` +
       `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     if (toastT > 0 && (toastT -= dt) <= 0) toastEl.style.opacity = 0;

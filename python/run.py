@@ -1,5 +1,5 @@
 """
-시우 게임 실행기 (Python) — love 계정(lovebeck1003-sketch/jumpmap)의 게임들을 파이썬으로 띄운다.
+시우 게임 실행기 (Python) — love 계정(lovebeck1003-sketch/siwoogame)의 게임들을 파이썬으로 띄운다.
 
 원본 게임들은 Three.js 3D 웹 게임(점프맵 · 좀비 FPS · 무한 드라이브)이다.
 이 스크립트는 파이썬 표준 라이브러리만으로 로컬 서버를 열고
@@ -10,6 +10,9 @@
     python run.py mobile     # 모바일 버전(siwoo/mobile/jumpmap.html) 실행
     python run.py fps        # 좀비 FPS(siwoo/fps/fps.html) 실행
     python run.py car        # 무한 드라이브(siwoo/drive/index.html) 실행
+    python run.py surv       # SURVIVOR(survivor.html) 실행
+    python run.py max        # SURVIVOR 만렙 테스트 모드(survivor.html?max=1) 실행
+    python run.py smite      # 강타 연습(L.html) 실행
     python run.py menu       # 메뉴(index.html) 실행
 
 Ctrl+C 로 서버 종료.
@@ -34,6 +37,10 @@ PAGES = {
     "fps":    "siwoo/fps/fps.html",
     "car":    "siwoo/drive/index.html",
     "drive":  "siwoo/drive/index.html",
+    "surv":   "survivor.html",
+    "survivor": "survivor.html",
+    "max":    "survivor.html?max=1",
+    "smite":  "L.html",
 }
 
 PORT = 8765
@@ -66,7 +73,8 @@ class Server(socketserver.ThreadingTCPServer):
 
 def main():
     page = pick_page()
-    target = os.path.join(ROOT, page.replace("/", os.sep))
+    # "survivor.html?max=1" 처럼 쿼리가 붙은 진입점도 있으므로 파일 검사에서는 떼어낸다
+    target = os.path.join(ROOT, page.split("?")[0].replace("/", os.sep))
     if not os.path.exists(target):
         print(f"[오류] 게임 파일을 찾을 수 없습니다: {target}")
         sys.exit(1)
@@ -84,7 +92,7 @@ def main():
         sys.exit(1)
 
     url = f"http://127.0.0.1:{port}/{page}"
-    print("SIWOO GAMES 서버 시작 (love 계정: lovebeck1003-sketch/jumpmap)")
+    print("SIWOO GAMES 서버 시작 (love 계정: lovebeck1003-sketch/siwoogame)")
     print(f"  실행 파일 : {page}")
     print(f"  주소      : {url}")
     print("  종료      : Ctrl+C")
