@@ -48,8 +48,12 @@
   .card .mx { font-size:11.5px; color:#e0a6ff; line-height:1.55; border-top:1px dashed #5a3a80; padding-top:7px; }
 
   /* 캐릭터 선택 */
-  .hero { width:188px; min-height:0; }
+  .hero { width:198px; }
   .hero .st { font-size:11.5px; color:#8de0a0; line-height:1.65; }
+  .hero.locked { opacity:.38; cursor:default; }
+  .hero.locked:hover { border-color:#3a3a5c; transform:none; box-shadow:none; }
+  .card.on { border-color:#ffd36b; background:#1d1a2c; }
+  .card.on .nm::after { content:' \25C0 선택 중'; font-size:11px; color:#8de0a0; }
 
   /* 스테이지 선택 */
   .stagecard .st { font-size:12px; color:#9aa0b5; line-height:1.7; }
@@ -82,7 +86,8 @@
   .shopcard .ds .bad { color:#ff8a9a; }
   .shopcard button.eqb { background:#2a2440; color:#ffd36b; border-color:#7a6a3a; }
   .shopcard button.uneq { background:#1a1a28; color:#aab0c8; border-color:#4b4b70; }
-  #gearbar { font-size:13px; color:#c6ccdf; letter-spacing:1px; }
+  #gearbar { font-size:13px; color:#c6ccdf; letter-spacing:1px;
+    white-space:pre-line; line-height:1.8; text-align:center; }
 
   /* HUD */
   #hud { position:absolute; inset:0; pointer-events:none; z-index:5; }
@@ -193,13 +198,21 @@
       1분마다 <b style="color:#ff8da0">중간 보스</b> · <b>10분</b>에 <b style="color:#e0a6ff">단계 보스</b> — 네모난 결투장에서 1:1 · 처치하면 <b style="color:#e0a6ff">클리어!</b> 다음 단계가 열림 (모두 5단계)<br>
       아이템  🍗회복 · 💣폭탄 · 🧲자석 · ⏱️시간 정지 · 💰금화 주머니<br>
       <b style="color:#aee9ff">모든 공격은 자동</b> — 가장 가까운 적을 알아서 노린다<br>
-      <b>일반 공격 하나</b>로 시작해, 보석을 모아 레벨업하며 무기를 늘려라<br>
+      <b>캐릭터의 시작 무기 하나</b>로 시작해, 보석을 모아 레벨업하며 무기를 늘려라<br>
       무기를 <b style="color:#d79bff">만렙</b> 찍으면 바로 <b style="color:#d79bff">진화</b> · 패시브도 만렙이면 <b style="color:#ffd36b">특별 보너스</b>
     </div>
     <div class="row" style="margin-top:14px">
       <button class="btn" id="startBtn">게임 시작</button>
       <button class="btn ghost" id="shopBtn">🪙 상점</button>
     </div>
+  </div>
+
+  <!-- 캐릭터 선택 -->
+  <div id="heroes" class="overlay hidden">
+    <h2>캐 릭 터</h2>
+    <div class="sub">캐릭터마다 <b>시작 무기</b>와 기본 능력치가 달라요 · 숫자 키로도 선택</div>
+    <div class="cards" id="heroList"></div>
+    <button class="btn ghost" id="heroBack">돌아가기</button>
   </div>
 
   <!-- 스테이지 선택 -->
@@ -442,6 +455,25 @@ const gs = k => GS[k] || 0;
 // ══════════════════════════ 시작 스탯 ══════════════════════════
 const BASE = { hp:100, spd:172 };
 
+// ══════════════════════════ 캐릭터 ══════════════════════════
+// start 시작 무기 · hp 최대 체력 가감 · spd 이동 속도 배율 · def 받는 피해 감소
+// unlock 해금에 필요한 클리어 단계(0부터 · null이면 처음부터 열림)
+// c 몸 색 · glow 발광 색 · cape 망토 색
+const HEROES = {
+  wander: { ico:'🏹', nm:'방랑자', start:'shot',   hp:0,  spd:1,   def:0,
+    c:'#ffd36b', glow:'255,200,90', cape:'#3b2b63', unlock:null,
+    ds:'조준 사격으로 시작 · 멀리서 싸우는 균형형',
+    st:'체력 100 · 속도 172' },
+  guard:  { ico:'🧄', nm:'수호자', start:'garlic', hp:45, spd:.86, def:.10,
+    c:'#8de0a0', glow:'140,230,160', cape:'#1f4030', unlock:0,
+    ds:'성역으로 시작 · 적에게 붙어 태우는 돌격형',
+    st:'체력 145 · 속도 148 · 받는 피해 -10%' },
+};
+let curHero = 'wander';
+if (SV.hero && HEROES[SV.hero]) curHero = SV.hero;
+const hero = () => HEROES[curHero];
+const heroOpen = k => MAX_TEST || HEROES[k].unlock === null || !!SV.sClr?.[HEROES[k].unlock];
+
 // ══════════════════════════ 업그레이드 / 진화 ══════════════════════════
 const UPGRADES = {
   shot:   { kind:'weapon', basic:true, ico:'🏹', nm:'조준 사격', max:8,
@@ -521,13 +553,15 @@ function reset() {
   S.shake = 0; S.flash = 0; S.flashC = '255,80,110';
   S.cam = { x:0, y:0 };
   calcGear();
-  const maxhp = BASE.hp + mLv('mhp') * 12 + gs('hp');
+  const H = hero();
+  const maxhp = BASE.hp + H.hp + mLv('mhp') * 12 + gs('hp');
   S.p = {
-    x:0, y:0, r:13, hp:maxhp, maxhp, spd:BASE.spd,
+    x:0, y:0, r:13, hp:maxhp, maxhp, spd:BASE.spd * H.spd,
     inv:0, face:1, bob:0, dead:false,
     dashCd:0, dashT:0, dashDir:{x:1,y:0}, revived:false
   };
-  S.up = { shot:1 };            // 일반 공격 하나로 시작 — 나머지는 레벨업으로 획득
+  S.up = { [H.start]:1 };       // 캐릭터의 시작 무기 하나로 시작 — 나머지는 레벨업으로 획득
+  S.heroWeapon = H.start;       // 시작 무기는 '새 무기' 개수에서 제외 (캐릭터끼리 공평하게)
   S.evo = {};
   S.aim = { x:1, y:0 }; S.recoil = 0;
   S.enemies = []; S.bullets = []; S.ebullets = []; S.gems = [];
@@ -1295,7 +1329,7 @@ function dropCoin(x, y) {
 }
 function hurtPlayer(amount) {
   if (S.p.inv > 0 || S.p.dead) return;
-  amount *= (1 - (S.up.armor||0)*0.07) * (1 - gs('def'));
+  amount *= (1 - (S.up.armor||0)*0.07) * (1 - gs('def')) * (1 - hero().def);
   S.p.hp -= amount;
   if (isMax('armor')) {   // 방어구 만렙: 반격 충격파
     S.zaps.push({ kind:'nova', x:S.p.x, y:S.p.y, r:0, max:130, l:.3, ml:.3, evo:true });
@@ -1333,7 +1367,8 @@ function gainXP(v) {
 }
 function pickOptions() {
   const owned = Object.keys(S.up);
-  const weaponCount = owned.filter(k => UPGRADES[k].kind === 'weapon' && !UPGRADES[k].basic).length;
+  const weaponCount = owned.filter(k => UPGRADES[k].kind === 'weapon'
+    && !UPGRADES[k].basic && k !== S.heroWeapon).length;
   const pool = [];
   for (const k in UPGRADES) {
     const u = UPGRADES[k], lv = S.up[k]||0;
@@ -2108,9 +2143,10 @@ function render() {
     ctx.beginPath(); ctx.ellipse(0, p.r*.9, p.r*.85, p.r*.32, 0, 0, TAU); ctx.fill();
     ctx.translate(0, Math.sin(p.bob)*2);
     ctx.globalAlpha = blink ? .45 : 1;
-    ctx.fillStyle = '#3b2b63';
+    const H = hero();
+    ctx.fillStyle = H.cape;
     ctx.beginPath(); ctx.arc(0, 2, p.r + 3, 0, Math.PI); ctx.fill();
-    ctx.fillStyle = '#ffd36b'; ctx.shadowBlur = 18; ctx.shadowColor = 'rgba(255,200,90,.6)';
+    ctx.fillStyle = H.c; ctx.shadowBlur = 18; ctx.shadowColor = `rgba(${H.glow},.6)`;
     ctx.beginPath(); ctx.arc(0, 0, p.r, 0, TAU); ctx.fill();
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#22182e';
@@ -2241,7 +2277,9 @@ function renderTitle() {
   const done = STAGES.filter((_, i) => SV.sClr?.[i]).length;
   if (done) $('best').textContent += `  ·  👑 클리어 ${done}/${STAGES.length}단계`;
   const eq = Object.keys(SLOTS).map(sl => GEAR[SV.equip[sl]]).filter(Boolean);
-  $('gearbar').textContent = eq.length ? '장비  ' + eq.map(g => g.ico + ' ' + g.nm).join('  ·  ') : '';
+  const h = hero();
+  $('gearbar').textContent = `캐릭터  ${h.ico} ${h.nm}`
+    + (eq.length ? '\n장비  ' + eq.map(g => g.ico + ' ' + g.nm).join('  ·  ') : '');
 }
 let shopTab = 'weapon';
 const TABS = { weapon:'⚔️ 무기', armor:'🛡️ 갑옷', acc:'💍 장신구', train:'📘 훈련' };
@@ -2322,7 +2360,11 @@ addEventListener('keydown', e => {
   if (!e.repeat && k === 'r' && S.state === 'over' && !$('gameover').classList.contains('hidden')) startGame();
   if (!e.repeat && k === 'n' && S.state === 'over' && !$('gameover').classList.contains('hidden')
       && !$('nextBtn').classList.contains('hidden')) startGame(curStage + 1);
-  if (!e.repeat && !$('stages').classList.contains('hidden')) {   // 스테이지 선택: 숫자 키로 바로 시작
+  if (!e.repeat && !$('heroes').classList.contains('hidden')) {   // 캐릭터 선택: 숫자 키로 선택
+    const hk = Object.keys(HEROES), hi = Number(k) - 1;
+    if (hi >= 0 && hi < hk.length) pickHero(hk[hi]);
+  }
+  else if (!e.repeat && !$('stages').classList.contains('hidden')) {   // 스테이지 선택: 숫자 키로 바로 시작
     const i = Number(k) - 1;
     if (i >= 0 && i < STAGES.length && stageOpen(i)) startGame(i);
   }
@@ -2413,6 +2455,7 @@ function startGame(stage = curStage) {
   $('title').classList.add('hidden');
   $('shop').classList.add('hidden');
   $('stages').classList.add('hidden');
+  $('heroes').classList.add('hidden');
   $('gameover').classList.add('hidden');
   $('pause').classList.add('hidden');
   $('levelup').classList.add('hidden');
@@ -2437,6 +2480,9 @@ function togglePause() {
 function gameOver(clear) {
   S.state = 'over';
   const n = curStage, last = n === STAGES.length - 1;
+  // 이번 클리어로 처음 열린 캐릭터 (아래 결과 화면에서 알려 줌)
+  const newHeroes = clear && !SV.sClr?.[n]
+    ? Object.keys(HEROES).filter(k => HEROES[k].unlock === n) : [];
   if (clear) {   // 단계 클리어: 보너스 골드 · 다음 단계 해금 · 단계별 클리어 횟수/최단 기록
     S.gold += S.st.bonus;
     SV.stage = Math.max(SV.stage || 1, Math.min(STAGES.length, n + 2));
@@ -2460,7 +2506,8 @@ function gameOver(clear) {
   $('goTitle').style.color = clear ? '#e0a6ff' : isBest ? '#8de0a0' : '#ffd36b';
   $('goStats').innerHTML =
     (clear ? `<span style="color:#e0a6ff">👑 ${BOSSES[S.st.boss].nm} 처치!</span> · 클리어 보너스 🪙 ${S.st.bonus}<br>`
-      + (last ? '<span style="color:#ffd36b">모든 단계를 정복했다!</span><br>' : `<span style="color:#8de0a0">🔓 ${n + 2}단계 「${STAGES[n + 1].nm}」 열림!</span><br>`) : '') +
+      + (last ? '<span style="color:#ffd36b">모든 단계를 정복했다!</span><br>' : `<span style="color:#8de0a0">🔓 ${n + 2}단계 「${STAGES[n + 1].nm}」 열림!</span><br>`)
+      + newHeroes.map(k => `<span style="color:#ffd36b">🔓 새 캐릭터 「${HEROES[k].ico} ${HEROES[k].nm}」 해금!</span><br>`).join('') : '') +
     `<span style="color:#9aa0b5">${n + 1}단계 · ${S.st.ico} ${S.st.nm}</span><br>` +
     `${clear ? '클리어 시간' : '생존'} <b>${fmtTime(S.t)}</b><br>
      레벨 <b>${S.lvl}</b> · 처치 <b>${S.kills}</b> · 누적 피해 <b>${Math.round(S.dmgDone).toLocaleString()}</b><br>
@@ -2471,8 +2518,33 @@ function gameOver(clear) {
   $('nextBtn').classList.toggle('hidden', !(clear && !last));
   setTimeout(() => $('gameover').classList.remove('hidden'), 700);
 }
+function openHeroes() {
+  initAudio();
+  const box = $('heroList'); box.innerHTML = '';
+  Object.keys(HEROES).forEach((k, i) => {
+    const h = HEROES[k], open = heroOpen(k);
+    const el = document.createElement('div');
+    el.className = 'card hero' + (open ? '' : ' locked') + (open && k === curHero ? ' on' : '');
+    el.innerHTML = `<span class="key">${i + 1}</span>
+      <div class="ico">${open ? h.ico : '🔒'}</div>
+      <div class="nm">${open ? h.nm : '???'}</div>
+      ${open ? `<div class="ds">${h.ds}</div><div class="st">${h.st}</div>`
+             : `<div class="ds">${h.unlock + 1}단계를 클리어하면 열려요</div>`}`;
+    if (open) el.onclick = () => pickHero(k);
+    box.appendChild(el);
+  });
+  $('title').classList.add('hidden');
+  $('gameover').classList.add('hidden');
+  $('heroes').classList.remove('hidden');
+}
+function pickHero(k) {
+  if (!heroOpen(k)) return;
+  curHero = k; SV.hero = k; save(); SFX.buy();
+  openStages();
+}
 function openStages() {
   initAudio();
+  $('heroes').classList.add('hidden');
   const box = $('stageList'); box.innerHTML = '';
   STAGES.forEach((st, i) => {
     const open = stageOpen(i), clr = SV.sClr?.[i];
@@ -2499,8 +2571,9 @@ function toTitle() {
   renderTitle();
 }
 
-$('startBtn').onclick = openStages;
-$('stageBack').onclick = () => { $('stages').classList.add('hidden'); $('title').classList.remove('hidden'); };
+$('startBtn').onclick = openHeroes;
+$('heroBack').onclick = () => { $('heroes').classList.add('hidden'); $('title').classList.remove('hidden'); renderTitle(); };
+$('stageBack').onclick = () => { $('stages').classList.add('hidden'); openHeroes(); };
 $('nextBtn').onclick = () => startGame(curStage + 1);
 $('retryBtn').onclick = toTitle;
 $('againBtn').onclick = () => startGame();
@@ -2512,7 +2585,7 @@ $('shopClose').onclick = () => { $('shop').classList.add('hidden'); $('title').c
 $('shopReset').onclick = () => {
   if (!confirm('모든 골드·장비·훈련·기록을 삭제합니다. 계속할까요?')) return;
   SV.gold = 0; SV.best = 0; SV.bestKills = 0; SV.meta = {}; SV.owned = {}; SV.equip = {};
-  SV.stage = 1; SV.sClr = {}; SV.sBest = {}; save();
+  SV.stage = 1; SV.sClr = {}; SV.sBest = {}; SV.hero = 'wander'; curHero = 'wander'; save();
   renderShop(); renderTitle();
 };
 
