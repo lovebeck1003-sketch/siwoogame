@@ -367,7 +367,10 @@ function bgmTick(dt, intensity) {
 // ?max=1 로 열면 만렙 테스트 모드 (전부 만렙 · 75분 난이도 · 세이브 분리)
 const MAX_TEST = new URLSearchParams(location.search).has('max');
 if (MAX_TEST) document.title = 'SURVIVOR (만렙 테스트)';
-const SAVE_KEY = MAX_TEST ? 'survivor_save_maxtest' : 'survivor_save_v1';
+// ?boss=45 로 열면 보스 테스트 (상점·장비 없이 45레벨 자동 강화 · 시작 무기는 진화 · 9:55 시작 · 세이브 분리)
+const BOSS_TEST = MAX_TEST ? 0 : Math.max(0, parseInt(new URLSearchParams(location.search).get('boss')) || 0);
+if (BOSS_TEST) document.title = `SURVIVOR (보스 테스트 Lv${BOSS_TEST})`;
+const SAVE_KEY = MAX_TEST ? 'survivor_save_maxtest' : BOSS_TEST ? 'survivor_save_bosstest' : 'survivor_save_v1';
 const SV = { gold:0, best:0, bestKills:0, meta:{}, owned:{}, equip:{}, muted:false, fx:0 };
 const FX_LV = [1, .6, .3];   // 내 스킬 이펙트 밝기 단계 (SV.fx)
 function load() {
@@ -472,7 +475,7 @@ const HEROES = {
 let curHero = 'wander';
 if (SV.hero && HEROES[SV.hero]) curHero = SV.hero;
 const hero = () => HEROES[curHero];
-const heroOpen = k => MAX_TEST || HEROES[k].unlock === null || !!SV.sClr?.[HEROES[k].unlock];
+const heroOpen = k => MAX_TEST || BOSS_TEST || HEROES[k].unlock === null || !!SV.sClr?.[HEROES[k].unlock];
 
 // ══════════════════════════ 업그레이드 / 진화 ══════════════════════════
 const UPGRADES = {
@@ -680,14 +683,16 @@ const STAGES = [
 // 단계 보스: pats 쓰는 패턴 · summon 소환하는 졸개 · bc 탄 색 [평소, 분노] · hp 체력 배율
 const BOSSES = {
   bone:   { nm:'해골 왕',     c:'#e8e2cf', r:52, hp:.6,  spd:1,   pats:['rush','rings','summon'],  summon:['skul','zomb'], bc:['#f0e6c8','#ff9a6b'] },
-  spider: { nm:'거미 여왕',   c:'#3b8a4a', r:56, hp:.85, spd:1.1, pats:['spiral','wall','summon'], summon:['bat','wisp'],  bc:['#9cff6b','#e4ff3b'] },
+  spider: { nm:'거미 여왕',   c:'#3b8a4a', r:56, hp:.85, spd:1.1, pats:['spiral','wall','summon'], summon:['bat','wisp'],  bc:['#9cff6b','#e4ff3b'],
+            ease:{ spiral:1.5, wall:1.3, gap:1.35 } },   // 탄막 패턴뿐이라 쉴 틈이 없음 → 나선 간격 1.5배 · 벽 간격 1.3배 · 빈틈 1.35배
   golem:  { nm:'강철 골렘',   c:'#8a8f9c', r:66, hp:1.1, spd:.8,  pats:['meteor','rush','rings'],  summon:[],              bc:['#ffb46b','#ff7040'] },
-  eye:    { nm:'공허의 눈',   c:'#3a1f6b', r:54, hp:1.4, spd:1,   pats:['laser','blink','spiral'], summon:[],              bc:['#7fd4ff','#4ff0ff'] },
+  eye:    { nm:'공허의 눈',   c:'#3a1f6b', r:54, hp:1.4, spd:1,   pats:['laser','blink','spiral','rings'], summon:[],      bc:['#7fd4ff','#4ff0ff'],
+            ease:{ lzSpin:1.3, tp:1 } },   // 4단계치고 쉬움 → 원형 탄막 추가 · 레이저 회전 1.3배 · 순간이동 +1회
   lord:   { nm:'심야의 군주', c:'#8a2be2', r:58, hp:1.8, spd:1,
             pats:['spiral','rings','rush','summon','meteor','laser','blink','wall'], summon:['bat','wisp'], bc:['#c27bff','#ff6bd5'] },
 };
 let curStage = 0;   // 지금 고른 단계 (0부터)
-const stageOpen = i => MAX_TEST || i < (SV.stage || 1);   // SV.stage = 열린 단계 수
+const stageOpen = i => MAX_TEST || BOSS_TEST || i < (SV.stage || 1);   // SV.stage = 열린 단계 수
 function makeEnemy(t, x, y) {
   const sc = (1 + S.t / 95) * S.st.hp;   // 시간 + 단계 배율
   return {
@@ -771,7 +776,7 @@ function spawnFinal() {
   const hp = 7000 * tier * (1 + S.t/180) * B.hp;
   S.boss = {
     x:p.x, y:p.y - ARENA_H*.6, r:B.r, c:B.c, id:'final', boss:true, final:true, tier,
-    kind:S.st.boss, nm:B.nm, pats:B.pats, summon:B.summon, bc:B.bc,
+    kind:S.st.boss, nm:B.nm, pats:B.pats, summon:B.summon, bc:B.bc, ease:B.ease || {},
     hp, maxhp:hp, spd:(70 + Math.min(tier, 30)*2)*B.spd, dmg:(40 + tier*10)*S.st.dmg, xp:200*tier,
     hit:0, bob:0, kb:{x:0,y:0},
     pat:'chase', patT:2, last:'', fireCd:0, spAng:0, ringN:0, rushT:0, rushLeft:0, windT:0, enraged:false
@@ -799,11 +804,11 @@ function nextPattern(e) {
   if (e.pat === 'meteor') { e.patT = 3.4; bossCall(e, '운석 낙하!'); }
   if (e.pat === 'laser')  {
     e.lzT = 1; e.lzAng = Math.atan2(S.p.y - e.y, S.p.x - e.x);
-    e.lzSpin = (Math.random() < .5 ? -1 : 1) * (e.enraged ? .85 : .6);
+    e.lzSpin = (Math.random() < .5 ? -1 : 1) * (e.enraged ? .85 : .6) * (e.ease.lzSpin || 1);
     e.lzN = e.enraged ? 6 : 4; e.patT = 4.2;
     bossCall(e, '십자 레이저!');
   }
-  if (e.pat === 'blink')  { e.tpLeft = e.enraged ? 4 : 3; e.tpT = 0; e.windT = .3; e.patT = 99; bossCall(e, '순간이동!'); }
+  if (e.pat === 'blink')  { e.tpLeft = (e.enraged ? 4 : 3) + (e.ease.tp || 0); e.tpT = 0; e.windT = .3; e.patT = 99; bossCall(e, '순간이동!'); }
   if (e.pat === 'wall')   {
     e.patT = e.enraged ? 3.8 : 2.8; e.wallSide = Math.floor(Math.random()*4);
     e.gapC = 0; bossCall(e, '탄막 벽!');
@@ -828,7 +833,7 @@ function finalAI(e, a, d2p, dt) {
     e.x += Math.cos(a)*e.spd*dt; e.y += Math.sin(a)*e.spd*dt;
   } else if (e.pat === 'spiral') {   // 나선 탄막
     if ((e.fireCd -= dt) <= 0) {
-      e.fireCd = e.enraged ? .06 : .09;
+      e.fireCd = (e.enraged ? .06 : .09) * (e.ease.spiral || 1);
       const arms = e.enraged ? 4 : 3;
       for (let k = 0; k < arms; k++) shootAng(e, e.spAng + k*TAU/arms, 190*bs);
       e.spAng += .23;
@@ -911,12 +916,12 @@ function finalAI(e, a, d2p, dt) {
     } else e.patT = 0;
   } else if (e.pat === 'wall') {     // 탄막 벽: 한쪽 벽에서 빈틈 하나 있는 탄 줄이 밀려옴
     if ((e.fireCd -= dt) <= 0) {
-      e.fireCd = e.enraged ? .55 : .7;
+      e.fireCd = (e.enraged ? .55 : .7) * (e.ease.wall || 1);
       const A2 = S.arena, h = A2.h, sp = 150*bs;
       e.gapC = clamp(e.gapC + rand(-160, 160), -h + 110, h - 110);   // 빈틈이 조금씩 움직여 길을 만듦
       const side = e.wallSide, dir = side < 2 ? 1 : -1, horiz = side % 2 === 0;
       for (let pos = -h + 16; pos <= h - 16; pos += 36) {
-        if (Math.abs(pos - e.gapC) < 70) continue;
+        if (Math.abs(pos - e.gapC) < 70 * (e.ease.gap || 1)) continue;
         const x = horiz ? A2.x - dir*h : A2.x + pos, y = horiz ? A2.y + pos : A2.y - dir*h;
         S.ebullets.push({ x, y, vx:horiz ? dir*sp : 0, vy:horiz ? 0 : dir*sp,
           r:8, dmg:e.dmg*.6, l:2*h/sp + .3, c:e.bc[e.enraged ? 1 : 0] });
@@ -2464,6 +2469,24 @@ function startGame(stage = curStage) {
     for (const k in UPGRADES) while (!isMax(k)) applyUpgrade(k, false, false);   // 테스트: 전부 만렙
     S.pendingLevels = 0; S.state = 'play'; S.p.hp = S.p.maxhp; renderSlots();
     S.t = 560; S.nextBoss = 9999;   // 테스트: 9:20 시작 → 40초 뒤 단계 보스 (중간 보스 없음)
+  } else if (BOSS_TEST) {   // 보스 테스트: 정한 레벨만큼 자동 강화 (무기 우선) → 5초 뒤 단계 보스
+    const PRI = { dmg:46, cdr:42, amount:40, hp:36, armor:36, luck:30, regen:22, spd:20, mag:18, growth:15 };
+    S.pendingLevels = 0;
+    let n = 1;
+    for (; n < BOSS_TEST && !isMax(S.heroWeapon); n++) applyUpgrade(S.heroWeapon, false, false);   // 보통 10분이면 무기 1개는 진화 → 시작 무기부터 만렙
+    for (; n < BOSS_TEST; n++) {
+      const opts = pickOptions(); if (!opts.length) break;
+      const own = Object.keys(S.up).filter(k => UPGRADES[k].kind === 'weapon').length;
+      let best = opts[0].k, bs = -1;
+      for (const { k } of opts) {
+        const u = UPGRADES[k], lv = S.up[k]||0;
+        const s = (u.kind === 'weapon' ? (lv + 1 >= u.max ? 100 : lv > 0 ? 50 + lv : own < 6 ? 44 : 0) : PRI[k] || 10) + Math.random()*12;
+        if (s > bs) { bs = s; best = k; }
+      }
+      applyUpgrade(best, false, false);
+    }
+    S.lvl = BOSS_TEST; S.xpNeed = Math.round((5 + S.lvl*3.1 + Math.pow(S.lvl, 1.42)) * 0.8); S.state = 'play'; S.p.hp = S.p.maxhp; renderSlots();
+    S.t = 595; S.nextBoss = 9999; S.nextSwarm = 9999;
   } else if (S.pendingLevels > 0) openLevelUp();
 }
 function togglePause() {
