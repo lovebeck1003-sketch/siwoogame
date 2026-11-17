@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SURVIVOR : 심야의 생존자</title>
+<meta name="description" content="5분을 버티고 보스를 쓰러뜨려라! 공격은 전부 자동, 보석을 모아 무기를 진화시키는 브라우저 생존 액션 게임. PC·휴대폰 모두 가능.">
+<meta name="theme-color" content="#07070c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SURVIVOR : 심야의 생존자">
+<meta property="og:description" content="5분을 버티고 보스를 쓰러뜨려라! 공격은 자동, 보석을 모아 무기를 진화시키는 생존 액션 게임">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307070c'/%3E%3Ccircle cx='32' cy='34' r='17' fill='%23ffd36b'/%3E%3Cpath d='M15 36a17 17 0 0 0 34 0z' fill='%233b2b63'/%3E%3Ccircle cx='26' cy='31' r='3' fill='%2322182e'/%3E%3Ccircle cx='38' cy='31' r='3' fill='%2322182e'/%3E%3C/svg%3E">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { width:100%; height:100%; background:#07070c; overflow:hidden;
@@ -158,6 +167,32 @@
   #pauseBtn { top:48px; left:14px; width:40px; height:34px; border-radius:6px; font-size:15px; }
   body.touch #slots { bottom:124px; }
   body.touch #mute { display:none; }
+  body.touch .pc-only, body:not(.touch) .touch-only { display:none; }
+
+  /* 타이틀 · 도움말 */
+  .tagline { color:#c9b98a; font-size:14px; letter-spacing:2px; margin-top:-8px; }
+  .ver { position:absolute; right:14px; bottom:10px; font-size:11px; color:#444a5e; }
+  .helpbox { max-width:680px; background:#10101c; border:1px solid #33334e; border-radius:8px;
+    padding:6px 22px 16px; text-align:left; }
+  .helpbox h3 { font-size:15px; color:#ffd36b; margin:14px 0 6px; letter-spacing:1px; }
+  .helpbox p { font-size:13px; color:#b9bfd4; line-height:1.85; }
+  #tip { position:absolute; left:50%; bottom:22%; transform:translateX(-50%); z-index:6;
+    background:rgba(10,8,20,.78); border:1px solid #4b4b70; border-radius:8px; padding:10px 18px;
+    font-size:15px; color:#e8e8f0; letter-spacing:1px; pointer-events:none; text-align:center;
+    transition:opacity .4s; white-space:nowrap; }
+
+  /* 작은 화면 (휴대폰) */
+  @media (max-width:700px), (max-height:500px) {
+    h1 { font-size:34px; letter-spacing:4px; }
+    .overlay { justify-content:flex-start; padding:18px 12px; gap:12px; }
+    .overlay > :first-child { margin-top:auto; }
+    .overlay > :last-child { margin-bottom:auto; }
+    .card { width:min(206px, 44vw); min-height:0; padding:12px 11px; }
+    .hero { width:min(198px, 44vw); }
+    .shopcard { width:min(250px, 92vw); }
+    .helpbox { padding:4px 14px 12px; }
+    #tip { font-size:13px; white-space:normal; width:86vw; }
+  }
 </style>
 </head>
 <body>
@@ -171,7 +206,7 @@
     <div id="fxtxt"></div>
     <div id="shaketxt"></div>
     <div id="topbar">00:00</div>
-    <div id="killtxt">처치 0</div>    <div id="goldtxt">🪙 0</div>
+    <div id="killtxt">처치 0</div>    <div id="goldtxt">💰 0</div>
     <div id="boss">
       <div id="bosstxt">B O S S</div>
       <div id="bossbar"><div id="bossfill"></div></div>
@@ -188,27 +223,52 @@
     <div id="slots"></div>
     <button class="tbtn" id="dashBtn">DASH</button>
     <button class="tbtn" id="pauseBtn">⏸</button>
+    <div id="tip" style="opacity:0"></div>
   </div>
   <div id="joy" class="hidden"><div id="joyKnob"></div></div>
 
   <!-- 타이틀 -->
   <div id="title" class="overlay">
     <h1>SURVIVOR</h1>
+    <div class="tagline">심야의 생존자 — 5분을 버티고 보스를 쓰러뜨려라</div>
     <div id="best"></div>
     <div id="gearbar"></div>
     <div class="sub">
-      <kbd>WASD</kbd>/<kbd>방향키</kbd> 이동 · <kbd>Space</kbd> 대시 · <kbd>P</kbd>/<kbd>Esc</kbd> 일시정지 · <kbd>M</kbd> 음소거 · <kbd>E</kbd> 이펙트 밝기 · <kbd>V</kbd> 화면 진동<br>
-      휴대폰은 <b>화면을 끌어서</b> 이동 · 오른쪽 아래 <b>DASH</b> 버튼<br>
-      30초마다 <b style="color:#ff8da0">중간 보스</b> · <b>5분</b>에 <b style="color:#e0a6ff">단계 보스</b> — 네모난 결투장에서 1:1 · 처치하면 <b style="color:#e0a6ff">클리어!</b> 다음 단계가 열림 (모두 5단계)<br>
-      아이템  🍗회복 · 💣폭탄 · 🧲자석 · ⏱️시간 정지 · 💰금화 주머니<br>
-      <b style="color:#aee9ff">모든 공격은 자동</b> — 가장 가까운 적을 알아서 노린다<br>
-      <b>캐릭터의 시작 무기 하나</b>로 시작해, 보석을 모아 레벨업하며 무기를 늘려라<br>
-      무기를 <b style="color:#d79bff">만렙</b> 찍으면 바로 <b style="color:#d79bff">진화</b> · 패시브도 만렙이면 <b style="color:#ffd36b">특별 보너스</b>
+      <span class="pc-only"><kbd>WASD</kbd>/<kbd>방향키</kbd> 이동 · <kbd>Space</kbd> 대시 · <kbd>Esc</kbd> 일시정지</span>
+      <span class="touch-only">화면을 <b>끌어서</b> 이동 · 오른쪽 아래 <b>DASH</b> 버튼</span><br>
+      <b style="color:#aee9ff">공격은 전부 자동!</b> 보석을 모아 레벨업하고 무기를 키우세요
     </div>
-    <div class="row" style="margin-top:14px">
+    <div class="row" style="margin-top:10px">
       <button class="btn" id="startBtn">게임 시작</button>
-      <button class="btn ghost" id="shopBtn">🪙 상점</button>
+      <button class="btn ghost" id="shopBtn">💰 상점</button>
+      <button class="btn ghost" id="helpBtn">❔ 도움말</button>
     </div>
+    <div class="ver">v1.0</div>
+  </div>
+
+  <!-- 도움말 -->
+  <div id="help" class="overlay hidden">
+    <h2>도 움 말</h2>
+    <div class="helpbox">
+      <h3>🎮 조작</h3>
+      <p><kbd>WASD</kbd>/<kbd>방향키</kbd> 이동 · <kbd>Space</kbd> 대시(잠깐 무적) · <kbd>P</kbd>/<kbd>Esc</kbd> 일시정지<br>
+         <kbd>M</kbd> 소리 · <kbd>E</kbd> 이펙트 밝기 · <kbd>V</kbd> 화면 진동 · 레벨업 카드는 <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>, 다시 뽑기 <kbd>R</kbd><br>
+         휴대폰: 화면 아무 데나 <b>끌어서</b> 이동 · 오른쪽 아래 <b>DASH</b> · 왼쪽 위 <b>⏸</b></p>
+      <h3>⚔️ 성장</h3>
+      <p><b>공격은 전부 자동</b>이에요. 적이 떨어뜨린 <b style="color:#7fd4ff">보석</b>을 모으면 레벨업 → 무기나 능력을 하나 골라요.<br>
+         무기를 <b style="color:#d79bff">만렙</b>까지 올리면 <b style="color:#d79bff">진화</b>, 패시브는 만렙 때 <b style="color:#ffd36b">특별 보너스</b>.<br>
+         판이 끝나면 모은 <b style="color:#ffd36b">골드</b>로 상점에서 장비와 훈련을 사서 더 강해질 수 있어요.</p>
+      <h3>👑 단계와 보스</h3>
+      <p>30초마다 <b style="color:#ff8da0">중간 보스</b>(잡으면 🎁 보물 상자) · <b>5분</b>에 <b style="color:#e0a6ff">단계 보스</b>와 결투장에서 1:1.<br>
+         보스를 잡으면 클리어 → 다음 단계와 새 캐릭터가 열려요 (모두 5단계 · 캐릭터 6명).</p>
+      <h3>✨ 랜덤 이벤트</h3>
+      <p>💰 <b>황금 고블린</b> 도망치기 전에 잡기 · ⚔️ <b>정예 습격</b> · 🎯 <b>사냥 미션</b> 제한 시간 안에 처치<br>
+         💀 <b>저주의 제단</b> 만지면 적이 2배, 대신 경험치·골드 2배 · 💎 <b>보석 비</b></p>
+      <h3>🗺️ 맵</h3>
+      <p>장애물은 나와 적 모두 지나갈 수 없고, <b>적의 탄을 막아 줘요</b>(내 탄은 통과).<br>
+         🛢️ <b>폭발 통</b>을 맞히면 터지며 주변 적에게 큰 피해 · 아이템 🍗회복 💣폭탄 🧲자석 ⏱️시간 정지 💰금화</p>
+    </div>
+    <button class="btn" id="helpClose">닫기</button>
   </div>
 
   <!-- 캐릭터 선택 -->
@@ -230,7 +290,7 @@
   <!-- 상점 -->
   <div id="shop" class="overlay hidden">
     <h2>상 점</h2>
-    <div class="gold" id="shopGold">🪙 0</div>
+    <div class="gold" id="shopGold">💰 0</div>
     <div class="tabs" id="shopTabs"></div>
     <div class="sub" id="shopSub"></div>
     <div class="cards" id="shopList"></div>
@@ -254,8 +314,11 @@
       <button class="btn" id="resumeBtn">계속하기</button>
       <button class="btn ghost" id="quitBtn">포기하기</button>
     </div>
-    <button class="btn ghost" id="fxBtn"></button>
-    <button class="btn ghost" id="shakeBtn"></button>
+    <div class="row">
+      <button class="btn ghost" id="soundBtn"></button>
+      <button class="btn ghost" id="fxBtn"></button>
+      <button class="btn ghost" id="shakeBtn"></button>
+    </div>
     <div class="sub"><kbd>P</kbd>/<kbd>Esc</kbd> 로 계속 · 포기해도 모은 골드는 받습니다</div>
   </div>
 
@@ -398,7 +461,7 @@ const META = {
   mdmg:  { nm:'예리함',     ico:'🗡️', max:10, ds:'모든 피해 +5%',      cost:l=>35 + l*30 },
   mspd:  { nm:'질주',       ico:'👟', max:5,  ds:'이동 속도 +4%',      cost:l=>40 + l*35 },
   mmag:  { nm:'탐욕',       ico:'🧲', max:5,  ds:'보석 수집 범위 +18%', cost:l=>30 + l*25 },
-  mgold: { nm:'황금손',     ico:'🪙', max:5,  ds:'골드 획득 +25%',     cost:l=>50 + l*45 },
+  mgold: { nm:'황금손',     ico:'💰', max:5,  ds:'골드 획득 +25%',     cost:l=>50 + l*45 },
   mdash: { nm:'그림자걸음', ico:'💨', max:4,  ds:'대시 쿨다운 -12%',   cost:l=>45 + l*40 },
   mstart:{ nm:'선행 학습',  ico:'📘', max:3,  ds:'시작 시 레벨업 1회', cost:l=>120 + l*120 },
   mrev:  { nm:'불사의 맹세', ico:'✨', max:1,  ds:'사망 시 1회 부활 (체력 60%)', cost:()=>400 },
@@ -414,7 +477,7 @@ const SLOTS = { weapon:'무기', armor:'갑옷', acc:'장신구' };
 const GEAR = {
   sword:   { slot:'weapon', ico:'🗡️', nm:'낡은 검',       cost:80,   st:{ dmg:.08 } },
   bow:     { slot:'weapon', ico:'🏹', nm:'사냥꾼의 활',   cost:200,  st:{ dmg:.10, crit:.05 } },
-  staff:   { slot:'weapon', ico:'🪄', nm:'마법사 지팡이', cost:350,  st:{ cdr:.15 } },
+  staff:   { slot:'weapon', ico:'🧙', nm:'마법사 지팡이', cost:350,  st:{ cdr:.15 } },
   great:   { slot:'weapon', ico:'⚔️', nm:'용사의 대검',   cost:600,  st:{ dmg:.25, spd:-.05 } },
   axe:     { slot:'weapon', ico:'🪓', nm:'광전사의 도끼', cost:900,  st:{ dmg:.40, def:-.12 } },
   holy:    { slot:'weapon', ico:'✨', nm:'전설의 성검',   cost:1500, st:{ dmg:.30, cdr:.15, crit:.10 } },
@@ -424,7 +487,7 @@ const GEAR = {
   plate:   { slot:'armor',  ico:'🛡️', nm:'판금 갑옷',     cost:500,  st:{ hp:20, def:.18, spd:-.06 } },
   robe:    { slot:'armor',  ico:'👘', nm:'생명의 로브',   cost:700,  st:{ hp:40, regen:1 } },
   dragon:  { slot:'armor',  ico:'🐉', nm:'용비늘 갑옷',   cost:1400, st:{ hp:60, def:.20 } },
-  coin:    { slot:'acc',    ico:'🪙', nm:'행운의 동전',   cost:100,  st:{ gold:.30 } },
+  coin:    { slot:'acc',    ico:'💰', nm:'행운의 동전',   cost:100,  st:{ gold:.30 } },
   ring:    { slot:'acc',    ico:'💍', nm:'자석 반지',     cost:150,  st:{ mag:.40 } },
   neck:    { slot:'acc',    ico:'📿', nm:'지혜의 목걸이', cost:300,  st:{ xp:.20 } },
   eye:     { slot:'acc',    ico:'👁️', nm:'독수리의 눈',   cost:450,  st:{ crit:.12 } },
@@ -487,34 +550,50 @@ const HEROES = {
     c:'#8de0a0', glow:'140,230,160', cape:'#1f4030', unlock:0,
     ds:'성역으로 시작 · 적에게 붙어 태우는 돌격형',
     st:'체력 145 · 속도 148 · 받는 피해 -10%' },
+  witch:  { ico:'❄️', nm:'서리 마녀', start:'frost', hp:-10, spd:1, def:0,
+    c:'#bfe8ff', glow:'150,210,255', cape:'#1d3a5c', unlock:1,
+    ds:'냉기 파동으로 시작 · 적을 느리게 묶어 두는 제어형',
+    st:'체력 90 · 속도 172' },
+  storm:  { ico:'⚡', nm:'뇌전술사', start:'bolt', hp:-5, spd:1.04, def:0,
+    c:'#fff27a', glow:'255,240,120', cape:'#3a2f6b', unlock:2,
+    ds:'연쇄 번개로 시작 · 여러 적을 한꺼번에 노리는 광역형',
+    st:'체력 95 · 속도 179' },
+  hunter: { ico:'🗡️', nm:'사냥꾼', start:'knife', hp:-15, spd:1.15, def:0,
+    c:'#d9a066', glow:'230,170,100', cape:'#4a2a18', unlock:3,
+    ds:'마법 단검으로 시작 · 빠르게 치고 빠지는 기동형',
+    st:'체력 85 · 속도 198' },
+  tinker: { ico:'🛰️', nm:'기술자', start:'sat', hp:20, spd:.92, def:.05,
+    c:'#b0b8c8', glow:'180,200,230', cape:'#2a3340', unlock:4,
+    ds:'위성 포격으로 시작 · 적이 몰린 곳을 노리는 포격형',
+    st:'체력 120 · 속도 158 · 받는 피해 -5%' },
 };
 let curHero = 'wander';
-if (SV.hero && HEROES[SV.hero]) curHero = SV.hero;
 const hero = () => HEROES[curHero];
 const heroOpen = k => MAX_TEST || BOSS_TEST || OPEN_TEST || HEROES[k].unlock === null || !!SV.sClr?.[HEROES[k].unlock];
+if (SV.hero && HEROES[SV.hero] && heroOpen(SV.hero)) curHero = SV.hero;
 
 // ══════════════════════════ 업그레이드 / 진화 ══════════════════════════
 const UPGRADES = {
   shot:   { kind:'weapon', basic:true, ico:'🏹', nm:'조준 사격', max:8,
     ds:lv=>`가까운 적에게 자동 사격 · ${lv>=6?3:lv>=3?2:1}발 · 피해 ${12+lv*7} · 관통 ${1+Math.floor(lv/3)}` },
   knife:  { kind:'weapon', ico:'🗡️', nm:'마법 단검', max:8,
-    ds:lv=>`가장 가까운 적에게 단검 ${1+Math.floor(lv/2)}발 · 피해 ${8+lv*4}` },
+    ds:lv=>`가장 가까운 적에게 단검 ${1+Math.floor(lv/2)}발 · 피해 ${10+lv*5}` },
   orbit:  { kind:'weapon', ico:'🔮', nm:'수호 구체', max:8,
-    ds:lv=>`주위를 도는 구체 ${1+Math.floor((lv+1)/2)}개 · 피해 ${10+lv*5}` },
+    ds:lv=>`주위를 도는 구체 ${1+Math.floor((lv+1)/2)}개 · 피해 ${12+lv*6}` },
   nova:   { kind:'weapon', ico:'💥', nm:'충격파', max:8,
-    ds:lv=>`주기적 전방위 폭발 · 반경 ${70+lv*16} · 피해 ${14+lv*7}` },
+    ds:lv=>`주기적 전방위 폭발 · 반경 ${70+lv*16} · 피해 ${18+lv*9}` },
   bolt:   { kind:'weapon', ico:'⚡', nm:'연쇄 번개', max:8,
     ds:lv=>`무작위 적 ${1+lv}명에게 낙뢰 · 피해 ${20+lv*9}` },
   garlic: { kind:'weapon', ico:'🧄', nm:'성역', max:8,
-    ds:lv=>`주변 적을 지속 태움 · 반경 ${60+lv*12} · 초당 ${10+lv*6}` },
+    ds:lv=>`주변 적을 지속 태움 · 반경 ${60+lv*12} · 초당 ${12+lv*7}` },
   flame:  { kind:'weapon', ico:'🧨', nm:'화염병', max:8,
     ds:lv=>`적에게 화염병 ${1+Math.floor(lv/3)}개 · 불바다 반경 ${40+lv*5} · 초당 ${14+lv*6}` },
-  rang:   { kind:'weapon', ico:'🪃', nm:'부메랑', max:8,
+  rang:   { kind:'weapon', ico:'🥏', nm:'부메랑', max:8,
     ds:lv=>`갔다가 돌아오며 모두 관통 · ${1+Math.floor(lv/4)}개 · 피해 ${16+lv*7}` },
   laser:  { kind:'weapon', ico:'🔦', nm:'레이저', max:8,
     ds:lv=>`가까운 적 방향으로 관통 광선 · 굵기 ${10+lv*2} · 피해 ${30+lv*12}` },
   frost:  { kind:'weapon', ico:'❄️', nm:'냉기 파동', max:8,
-    ds:lv=>`주변 적을 느리게(50%) · 반경 ${110+lv*14} · 피해 ${8+lv*4}` },
+    ds:lv=>`주변 적을 느리게(50%) · 반경 ${110+lv*14} · 피해 ${12+lv*6}` },
   sweep:  { kind:'weapon', ico:'🔆', nm:'회전 광선', max:8,
     ds:lv=>`주위를 빙글빙글 도는 광선 ${1+Math.floor(lv/4)}줄 · 길이 ${150+lv*15} · 초당 ${40+lv*16}` },
   prism:  { kind:'weapon', ico:'💎', nm:'프리즘 광선', max:8,
@@ -544,8 +623,8 @@ const UPGRADES = {
 };
 // 무기를 만렙 찍으면 바로 진화
 const EVOS = {
-  shot:   { ico:'🌠', nm:'폭풍의 궁수', ds:'5발 산탄 · 피해 2배 · 연사 2배 · 적을 추적하는 유도탄' },
-  knife:  { ico:'🌪️', nm:'천 겹의 칼날', ds:'사방으로 8발을 뿌리며 피해 2배 · 관통 대폭 증가' },
+  shot:   { ico:'🌠', nm:'폭풍의 궁수', ds:'5발 산탄 · 피해 1.2배 · 적을 추적하는 유도탄 · 관통 +3' },
+  knife:  { ico:'🌪️', nm:'천 겹의 칼날', ds:'조준한 단검 + 사방으로 8발 더 · 피해 2배 · 관통 대폭 증가' },
   orbit:  { ico:'🪐', nm:'성운의 고리',  ds:'구체 수 2배 · 반경 확대 · 피해 2배' },
   nova:   { ico:'☄️', nm:'초신성',      ds:'폭발 반경 2배 · 피해 2배 · 강력한 넉백' },
   bolt:   { ico:'🌩️', nm:'뇌신의 분노',  ds:'낙뢰 수 2배 · 피해 2배 · 항상 치명타' },
@@ -590,10 +669,12 @@ function reset() {
   S.orbAng = 0; S.sweepAng = 0;
   S.strikes = [];   // 위성 포격 예고 지점
   S.pools = [];   // 화염병 불바다
+  S.obSeed = Math.floor(Math.random()*1e9); S.obChunks = new Map(); S.obs = []; S.barrelQ = [];   // 맵 장애물
   S.boss = null; S.mid = null; S.nextBoss = 60;   // boss: 위쪽 체력바에 표시할 보스 · mid: 살아 있는 중간 보스
   S.nextSwarm = 0;   // 그림자 떼 다음 등장 시각
   S.arena = null; S.finalAt = 600; S.finalWarn = false; S.finalDone = false;   // 최종 보스는 진행 시계 600 = 실제 5분에
   S.clearT = 0;   // 최종 보스 처치 후 클리어 화면까지 남은 시간
+  S.ev = null; S.nextEv = 35; S.lastEv = ''; S.curse = 0; S.eliteLeft = 0;   // 랜덤 이벤트 (실제 시간 S.t 기준)
   S.pendingLevels = 0; S.chestPicks = 0;
   S.rerolls = 2; S.luOpts = []; S.luChest = false;
   for (let i = 0; i < mLv('mstart'); i++) S.pendingLevels++;
@@ -683,22 +764,22 @@ const SLIMELET = { id:'slimelet', c:'#a8f070', r:10, hp:45, spd:100, dmg:10, xp:
 
 // ══════════════════════════ 스테이지 ══════════════════════════
 // 한 단계 5분 · 5분에 그 단계 보스와 결투 (en 등장 시각은 진행 시계 S.g 기준 = 실제 시간 x PACE) · 처치하면 클리어 + 다음 단계 해금
-// en: 이 단계에 나오는 적과 등장 시각(초) · hp/dmg: 적 능력치 배율 · gold: 코인 배율 · bonus: 클리어 보너스
+// en: 이 단계에 나오는 적과 등장 시각(초) · hp/dmg: 적 능력치 배율 · gold: 코인 배율 · bonus: 클리어 보너스 · obs: 장애물 밀도
 const STAGES = [
-  { nm:'묘지',      ico:'🪦', bg:['#15152a','#06060d'], hp:1,   dmg:1,    gold:1,   bonus:200,  boss:'bone',
+  { nm:'묘지',      ico:'⚰️', bg:['#15152a','#06060d'], hp:1,   dmg:1,    gold:1,   bonus:200,  boss:'bone', obs:1,
     en:{ bat:0, zomb:30, skul:70, tank:180, mage:300, brute:420 } },
-  { nm:'어두운 숲', ico:'🌲', bg:['#0f2216','#040a06'], hp:1.3, dmg:1.12, gold:1.3, bonus:300,  boss:'spider',
+  { nm:'어두운 숲', ico:'🌲', bg:['#0f2216','#040a06'], hp:1.3, dmg:1.12, gold:1.3, bonus:300,  boss:'spider', obs:1.4,
     en:{ bat:0, zomb:20, wisp:60, mage:120, slime:200, tank:300, brute:400 } },
-  { nm:'폐허 도시', ico:'🏚️', bg:['#241a10','#0a0604'], hp:1.7, dmg:1.25, gold:1.6, bonus:450,  boss:'golem',
+  { nm:'폐허 도시', ico:'🏚️', bg:['#241a10','#0a0604'], hp:1.7, dmg:1.25, gold:1.6, bonus:450,  boss:'golem', obs:1.2,
     en:{ skul:0, zomb:0, tank:60, mage:100, bomb:160, brute:240, slime:320, wisp:400 } },
-  { nm:'심연',      ico:'🌌', bg:['#1a0f2e','#05030c'], hp:2.2, dmg:1.4,  gold:2,   bonus:650,  boss:'eye',
+  { nm:'심연',      ico:'🌌', bg:['#1a0f2e','#05030c'], hp:2.2, dmg:1.4,  gold:2,   bonus:650,  boss:'eye', obs:.8,
     en:{ wisp:0, skul:0, mage:40, shade:120, bomb:180, lance:240, brute:300, slime:360 } },
-  { nm:'군주의 성', ico:'🏰', bg:['#2a0f16','#0a0306'], hp:2.8, dmg:1.6,  gold:2.5, bonus:1000, boss:'lord',
+  { nm:'군주의 성', ico:'🏰', bg:['#2a0f16','#0a0306'], hp:2.8, dmg:1.6,  gold:2.5, bonus:1000, boss:'lord', obs:1,
     en:{ bat:0, skul:0, zomb:0, tank:40, mage:60, wisp:90, brute:120, bomb:160, slime:200, shade:240, lance:280 } },
 ];
 // 단계 보스: pats 쓰는 패턴 · summon 소환하는 졸개 · bc 탄 색 [평소, 분노] · hp 체력 배율
 const BOSSES = {
-  bone:   { nm:'해골 왕',     c:'#e8e2cf', r:52, hp:.6,  spd:1,   pats:['rush','rings','summon'],  summon:['skul','zomb'], bc:['#f0e6c8','#ff9a6b'] },
+  bone:   { nm:'해골 왕',     c:'#e8e2cf', r:52, hp:.45, spd:1,   pats:['rush','rings','summon'],  summon:['skul','zomb'], bc:['#f0e6c8','#ff9a6b'] },   // 첫 클리어가 너무 오래 걸려서 체력 .6 → .45
   spider: { nm:'거미 여왕',   c:'#3b8a4a', r:56, hp:.85, spd:1.1, pats:['spiral','wall','summon'], summon:['bat','wisp'],  bc:['#9cff6b','#e4ff3b'],
             ease:{ spiral:1.5, wall:1.3, gap:1.35 } },   // 탄막 패턴뿐이라 쉴 틈이 없음 → 나선 간격 1.5배 · 벽 간격 1.3배 · 빈틈 1.35배
   golem:  { nm:'강철 골렘',   c:'#8a8f9c', r:66, hp:2.15, spd:.8, pats:['meteor','rush','rings','quake','boulder','magma'],  summon:[],              bc:['#ffb46b','#ff7040'],
@@ -748,11 +829,243 @@ function spawnSwarm() {
   popText(S.p.x, S.p.y - 60, '포위당했다!', '#b3a8ff', true);
   tone(70, .6, 'sawtooth', .1, 140);
 }
+// ══════════════════════════ 랜덤 이벤트 ══════════════════════════
+// 35초쯤 첫 이벤트 → 이후 40~55초마다 하나씩 (같은 이벤트 연속 없음 · 최종 보스 직전 10초와 결투 중엔 없음)
+// dur: 지속 시간(초) · start 시작 · tick 매 프레임 (ev.done = true 면 성공으로 끝) · end 시간이 다 됐을 때
+const GOBLIN = { id:'gob', c:'#ffd23f', r:14, hp:420, spd:135, dmg:0, xp:12, ai:'gob' };
+const EVENTS = {
+  gob: { nm:'💰 황금 고블린', ds:'도망치기 전에 잡으면 금화와 보물 상자!', dur:15,
+    start(ev) {
+      const a = rand(0, TAU);
+      ev.e = makeEnemy(GOBLIN, S.p.x + Math.cos(a)*260, S.p.y + Math.sin(a)*260);
+      S.enemies.push(ev.e);
+    },
+    tick(ev) { if (!S.enemies.includes(ev.e)) ev.done = true; },   // 잡힘 (보상은 killEnemy)
+    end(ev) {
+      const i = S.enemies.indexOf(ev.e); if (i < 0) return;
+      S.enemies.splice(i, 1);
+      particles(ev.e.x, ev.e.y, 20, '#ffd23f', 200, .5, 3);
+      popText(S.p.x, S.p.y - 70, '황금 고블린이 도망쳤다…', '#c9b26b', true);
+    },
+    banner: ev => `💰 황금 고블린 도주까지 ${Math.ceil(ev.t)}초` },
+  elite: { nm:'⚔️ 정예 습격', ds:'강한 정예병이 몰려온다! 모두 잡으면 보물 상자', dur:.1,
+    start() {
+      const avail = S.etypes.filter(e => S.g >= e.at && !e.event);
+      const t = avail[avail.length - 1];
+      const n = 3 + Math.floor(S.g/200), rad = Math.max(W, H)*.5, a0 = rand(0, TAU);
+      S.eliteLeft = n;
+      for (let i = 0; i < n; i++) {
+        const a = a0 + rand(-.6, .6);
+        const e = makeEnemy(t, S.p.x + Math.cos(a)*rad, S.p.y + Math.sin(a)*rad);
+        e.hp *= 4; e.maxhp *= 4; e.r *= 1.35; e.dmg *= 1.25; e.xp *= 6; e.spd *= 1.1; e.elite = true;
+        S.enemies.push(e);
+      }
+    } },
+  hunt: { nm:'🎯 사냥 미션', ds:'20초 안에 목표만큼 처치하면 보물 상자!', dur:20,
+    start(ev) { ev.k0 = S.kills; ev.need = Math.round(30 + S.g/8); },
+    tick(ev) {
+      if (S.kills - ev.k0 < ev.need) return;
+      ev.done = true;
+      for (let k = 0; k < 10; k++) dropCoin(S.p.x + rand(-40,40), S.p.y + rand(-40,40));
+      popText(S.p.x, S.p.y - 70, '사냥 성공!', '#7fffd4', true);
+      S.chestPicks += 1; SFX.chest();
+      if (S.state === 'play') openLevelUp(true);
+    },
+    end() { popText(S.p.x, S.p.y - 70, '사냥 실패…', '#c9b26b', true); },
+    banner: ev => `🎯 사냥 미션  ${Math.min(ev.need, S.kills - ev.k0)} / ${ev.need}  ·  ${Math.ceil(ev.t)}초` },
+  altar: { nm:'💀 저주의 제단', ds:'만지면 25초간 적이 2배로 몰려오고 세지지만 경험치·골드 2배', dur:15,
+    start(ev) {
+      const a = rand(0, TAU);
+      ev.it = { x:S.p.x + Math.cos(a)*220, y:S.p.y + Math.sin(a)*220, r:20, kind:'altar', bob:0 };
+      pushOut(ev.it);   // 장애물 안에 생기지 않게
+      S.pickups.push(ev.it);
+    },
+    tick(ev) { if (!S.pickups.includes(ev.it)) ev.done = true; },   // 만짐 (효과는 아이템 줍기에서)
+    end(ev) { const i = S.pickups.indexOf(ev.it); if (i >= 0) S.pickups.splice(i, 1); },
+    banner: ev => `💀 저주의 제단  ${Math.ceil(ev.t)}초 뒤 사라짐` },
+  rain: { nm:'💎 보석 비', ds:'하늘에서 보석이 쏟아진다!', dur:6,
+    tick(ev, dt) {
+      if (Math.random() < dt*16) {
+        const a = rand(0, TAU), d = rand(40, 380);
+        dropGem(S.p.x + Math.cos(a)*d, S.p.y + Math.sin(a)*d, 1 + Math.floor(Math.random()*(2 + S.g/200)));
+      }
+      if (Math.random() < dt*2) dropCoin(S.p.x + rand(-300,300), S.p.y + rand(-300,300));
+    } },
+};
+function tickEvents(dt) {
+  if (S.curse > 0) S.curse = Math.max(0, S.curse - dt);
+  const ev = S.ev;
+  if (ev) {
+    if (S.arena) {   // 최종 보스 결투가 시작되면 이벤트 취소 (제단·고블린은 조용히 치움)
+      if (ev.it) { const i = S.pickups.indexOf(ev.it); if (i >= 0) S.pickups.splice(i, 1); }
+      S.ev = null; return;
+    }
+    const E = EVENTS[ev.k];
+    ev.t -= dt;
+    if (E.tick) E.tick(ev, dt);
+    if (ev.done) S.ev = null;
+    else if (ev.t <= 0) { if (E.end) E.end(ev); S.ev = null; }
+    return;
+  }
+  if (S.t < S.nextEv || S.arena || S.finalDone || S.g >= S.finalAt - 20) return;
+  const ks = Object.keys(EVENTS).filter(k => k !== S.lastEv);
+  const k = ks[Math.floor(Math.random()*ks.length)], E = EVENTS[k];
+  S.lastEv = k; S.ev = { k, t:E.dur };
+  if (E.start) E.start(S.ev);
+  S.nextEv = S.t + rand(40, 55);
+  popText(S.p.x, S.p.y - 100, E.nm, '#7fffd4', true);
+  popText(S.p.x, S.p.y - 78, E.ds, '#bff5e6');
+  tone(660, .12, 'triangle', .07, 990); setTimeout(() => tone(990, .18, 'triangle', .07, 1320), 120);
+}
+// 저주의 제단을 만졌을 때
+function touchAltar(p) {
+  S.curse = 25;
+  S.flash = .5; S.flashC = '150,40,200'; S.shake = 12;
+  particles(p.x, p.y, 40, '#b05cff', 260, .7, 4);
+  popText(p.x, p.y - 60, '저주! 25초간 적 2배 · 경험치·골드 2배', '#d79bff', true);
+  tone(80, .8, 'sawtooth', .12, 40);
+}
+
+// ══════════════════════════ 맵 장애물 ══════════════════════════
+// 무한 맵을 OB_CHUNK 크기 칸으로 나눠, 칸마다 판 시드로 장애물을 정해 둠 (같은 판에선 다시 와도 그대로)
+// 플레이어·적은 못 지나감 · 적 탄은 막힘 · 내 탄은 통과 · 폭발 통(barrel)은 맞히면 터져 주변 적에게 피해
+const OB_CHUNK = 520, OB_SAFE = 260, BARREL_R = 110;
+const OB_STYLE = ['tomb', 'tree', 'ruin', 'crystal', 'pillar'];   // 단계별 장애물 모양
+function obRng(cx, cy) {
+  let h = (Math.imul(cx, 73856093) ^ Math.imul(cy, 19349663) ^ S.obSeed) >>> 0;
+  return () => {
+    h = (h + 0x6D2B79F5) >>> 0; let t = h;
+    t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function genChunk(cx, cy) {
+  const r = obRng(cx, cy), list = [], x0 = cx*OB_CHUNK, y0 = cy*OB_CHUNK;
+  const spot = () => [x0 + 60 + r()*(OB_CHUNK - 120), y0 + 60 + r()*(OB_CHUNK - 120)];
+  const n = Math.floor(r()*2.4*(S.st.obs ?? 1));   // 칸마다 0~2개 (단계별 밀도)
+  for (let i = 0; i < n; i++) {
+    const [x, y] = spot();
+    if (r() < .2) {   // 벽: 3~5개를 한 줄로
+      const k = 3 + Math.floor(r()*3), a = r()*Math.PI, rr = 22 + r()*8;
+      for (let j = 0; j < k; j++) list.push({ x:x + Math.cos(a)*j*rr*1.7, y:y + Math.sin(a)*j*rr*1.7, r:rr, v:r() });
+    } else list.push({ x, y, r:26 + r()*32, v:r() });
+  }
+  if (r() < .3) {   // 폭발 통 1~3개
+    const k = 1 + Math.floor(r()*3), [x, y] = spot();
+    for (let j = 0; j < k; j++) list.push({ x:x + (r() - .5)*70, y:y + (r() - .5)*70, r:15, barrel:true, v:r() });
+  }
+  return list.filter(o => o.x*o.x + o.y*o.y > OB_SAFE*OB_SAFE);   // 시작 지점 근처는 비워 둠
+}
+// 화면 주변 칸의 장애물만 모아 S.obs에 (매 프레임) · 결투장이 열릴 땐 결투장 전체를 덮도록 (cx, cy, mx, my 지정)
+function refreshObstacles(wide) {
+  const X = S.cam.x, Y = S.cam.y, out = [];
+  const mx = wide ? Math.max(W/2, ARENA_H) + 400 : W/2 + 300, my = wide ? Math.max(H/2, ARENA_H) + 400 : H/2 + 300;
+  const cx0 = Math.floor((X - mx)/OB_CHUNK), cx1 = Math.floor((X + mx)/OB_CHUNK);
+  const cy0 = Math.floor((Y - my)/OB_CHUNK), cy1 = Math.floor((Y + my)/OB_CHUNK);
+  for (let cx = cx0; cx <= cx1; cx++) for (let cy = cy0; cy <= cy1; cy++) {
+    const key = cx + ',' + cy;
+    let c = S.obChunks.get(key);
+    if (!c) { c = genChunk(cx, cy); S.obChunks.set(key, c); }
+    for (const o of c) if (!o.gone) out.push(o);
+  }
+  S.obs = out;
+}
+// 장애물 밖으로 밀어냄 · slide: 정면으로 막혀 멈추지 않게 옆으로 살짝 비켜 감
+//   (적은 정해진 쪽으로 · 플레이어는 mv 이동 방향에 가까운 쪽으로) · 겹친 벽 틈에 끼지 않게 여러 번 반복
+function pushOut(o, slide, mv) {
+  for (let it = 0; it < 3; it++) {
+    let moved = false;
+    for (const b of S.obs) {
+      const dx = o.x - b.x, dy = o.y - b.y, rr = o.r + b.r, d2 = dx*dx + dy*dy;
+      if (d2 >= rr*rr) continue;
+      const d = Math.sqrt(d2) || .01, nx = dx/d, ny = dy/d;
+      o.x = b.x + nx*rr; o.y = b.y + ny*rr; moved = true;
+      if (slide && it === 0) {
+        let side = o.side ??= Math.random() < .5 ? -1 : 1;
+        if (mv) { const c = -ny*mv.x + nx*mv.y; if (Math.abs(c) > .05) side = Math.sign(c); }
+        o.x += -ny*side*1.5; o.y += nx*side*1.5;
+      }
+    }
+    if (!moved) break;
+  }
+}
+const inObstacle = (x, y) => S.obs.some(b => (x - b.x)**2 + (y - b.y)**2 < b.r*b.r);
+// 범위 안의 폭발 통을 터뜨림 (연쇄 폭발은 살짝 늦게)
+function hitBarrels(x, y, r, delay = 0) {
+  for (const b of S.obs)
+    if (b.barrel && !b.gone && !b.lit && (x - b.x)**2 + (y - b.y)**2 < (r + b.r)**2) { b.lit = true; S.barrelQ.push({ b, t:delay }); }
+}
+function tickBarrels(dt) {
+  for (let i = S.barrelQ.length - 1; i >= 0; i--) {
+    const q = S.barrelQ[i];
+    if ((q.t -= dt) > 0) continue;
+    S.barrelQ.splice(i, 1);
+    const b = q.b; b.gone = true;
+    S.zaps.push({ kind:'nova', x:b.x, y:b.y, r:0, max:BARREL_R, l:.3, ml:.3, evo:true });
+    particles(b.x, b.y, 30, '#ff8a3a', 300, .55, 4);
+    for (const e of [...S.enemies])
+      if (dist2(e, b) < (BARREL_R + e.r)**2) damageEnemy(e, 60 + S.g*.3, b.x, b.y, 380);
+    hitBarrels(b.x, b.y, BARREL_R, .12);
+    S.shake = Math.max(S.shake, 10);
+    noise(.4, .16, 400); tone(90, .35, 'sawtooth', .1, 40);
+  }
+}
+function drawObstacle(o) {
+  const st = o.barrel ? 'barrel' : OB_STYLE[curStage] || 'pillar', r = o.r;
+  ctx.save(); ctx.translate(o.x, o.y);
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.beginPath(); ctx.ellipse(0, r*.75, r*1.05, r*.4, 0, 0, TAU); ctx.fill();
+  if (st === 'barrel') {
+    const glow = o.lit ? 1 : .5 + Math.sin(S.t*4 + o.v*9)*.2;
+    ctx.fillStyle = o.lit ? '#ffd24a' : '#b5482a';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#5a1f10'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, r*.62, 0, TAU); ctx.stroke();
+    ctx.fillStyle = `rgba(255,210,74,${glow})`;
+    ctx.beginPath(); ctx.arc(0, 0, r*.28, 0, TAU); ctx.fill();
+  } else if (st === 'tomb') {   // 묘비
+    const w = r*.75;
+    ctx.fillStyle = '#5d6273';
+    ctx.beginPath(); ctx.moveTo(-w, r*.8); ctx.lineTo(-w, -r*.3); ctx.arc(0, -r*.3, w, Math.PI, 0); ctx.lineTo(w, r*.8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#767c8f'; ctx.fillRect(-w, r*.55, w*2, r*.25);
+    ctx.strokeStyle = '#3f4352'; ctx.lineWidth = Math.max(2, r*.1);
+    ctx.beginPath(); ctx.moveTo(0, -r*.7); ctx.lineTo(0, r*.15); ctx.moveTo(-r*.3, -r*.38); ctx.lineTo(r*.3, -r*.38); ctx.stroke();
+  } else if (st === 'tree') {   // 나무
+    ctx.fillStyle = '#4a3020'; ctx.fillRect(-r*.18, -r*.1, r*.36, r*.85);
+    ctx.fillStyle = '#173d22'; ctx.beginPath(); ctx.arc(0, -r*.2, r, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#225a32'; ctx.beginPath(); ctx.arc(-r*.25, -r*.4, r*.62, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#2f7343'; ctx.beginPath(); ctx.arc(-r*.35, -r*.55, r*.3, 0, TAU); ctx.fill();
+  } else if (st === 'ruin') {   // 무너진 돌 블록
+    ctx.rotate(o.v*TAU);
+    ctx.fillStyle = '#5e4c39'; ctx.fillRect(-r*.85, -r*.85, r*1.7, r*1.7);
+    ctx.fillStyle = '#806a50'; ctx.fillRect(-r*.85, -r*.85, r*1.7, r*.55);
+    ctx.strokeStyle = '#3a2d20'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-r*.3, -r*.3); ctx.lineTo(r*.1, r*.2); ctx.lineTo(-r*.05, r*.8); ctx.stroke();
+  } else if (st === 'crystal') {   // 수정
+    ctx.fillStyle = `rgba(150,90,255,${.15 + Math.sin(S.t*2 + o.v*9)*.06})`;
+    ctx.beginPath(); ctx.arc(0, 0, r*1.3, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#5a33b8';
+    ctx.beginPath(); ctx.moveTo(0, -r*1.25); ctx.lineTo(r*.7, 0); ctx.lineTo(0, r*.85); ctx.lineTo(-r*.7, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#a98bff';
+    ctx.beginPath(); ctx.moveTo(0, -r*1.25); ctx.lineTo(r*.7, 0); ctx.lineTo(0, r*.1); ctx.closePath(); ctx.fill();
+  } else {   // 돌기둥
+    ctx.fillStyle = '#4a4553'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#6d6779'; ctx.beginPath(); ctx.arc(0, -r*.12, r*.8, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#3a3542'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, -r*.12, r*.5, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // 자폭병 폭발 — 처치 보상 없음
 const BOMB_R = 95;
 function explodeBomber(e) {
   const i = S.enemies.indexOf(e); if (i < 0) return;
   S.enemies.splice(i, 1);
+  if (e.elite && --S.eliteLeft === 0) {   // 정예 자폭병이 터져도 정예 습격 보상은 나옴
+    S.pickups.push({ x:e.x, y:e.y, r:18, kind:'chest', bob:0 });
+    popText(e.x, e.y - 40, '정예 습격 격퇴!', '#ffd36b', true);
+  }
   particles(e.x, e.y, 34, '#ffb347', 300, .5, 4);
   S.zaps.push({ kind:'nova', x:e.x, y:e.y, r:0, max:BOMB_R, l:.25, ml:.25 });
   S.shake = Math.max(S.shake, 10);
@@ -796,6 +1109,13 @@ function spawnFinal() {
   // 결투장 밖 졸개·탄은 사라지고, 남은 보석은 전부 끌어옴
   for (const e of S.enemies) particles(e.x, e.y, 6, e.c, 120, .4, 3);
   S.enemies.length = 0; S.ebullets.length = 0; S.mid = null;   // 결투 중엔 중간 보스 난입 없음
+  // 결투장 안 장애물은 무너져 사라짐
+  refreshObstacles(true);
+  for (const o of S.obs)
+    if (Math.abs(o.x - p.x) < ARENA_H + o.r && Math.abs(o.y - p.y) < ARENA_H + o.r) {
+      o.gone = true; particles(o.x, o.y, 10, '#8a8496', 160, .5, 4);
+    }
+  S.barrelQ.length = 0;
   for (const g of S.gems) g.vac = true;
   const tier = Math.max(1, Math.floor(S.g / 60));
   const B = BOSSES[S.st.boss];
@@ -1261,11 +1581,12 @@ function nearestEnemy(from, exclude) {
   }
   return best;
 }
-// 가장 가까운 적에게 자동 사격
+// 가장 가까운 적에게 자동 사격 · SHOT_IV: 연사 간격(초)
+const SHOT_IV = () => isEvo('shot') ? 0.32 : 0.28;
 function fireShot() {
   const lv = S.up.shot, evo = isEvo('shot'); if (!lv) return;
   const count = (evo ? 5 : (lv >= 6 ? 3 : lv >= 3 ? 2 : 1)) + extra();
-  const dmg = (12 + lv*7) * (evo ? 2 : 1);
+  const dmg = (12 + lv*7) * (evo ? 1.2 : 1);   // 진화: 5발 유도탄 · 연사 간격 SHOT_IV (예전 2배 피해·2배 연사는 DPS 약 4900으로 너무 셌음 → 약 1270)
   const spread = evo ? 0.30 : 0.13;
   const base = Math.atan2(S.aim.y, S.aim.x);
   for (let i = 0; i < count; i++) {
@@ -1286,13 +1607,16 @@ function fireShot() {
 
 function fireKnife() {
   const lv = S.up.knife, evo = isEvo('knife'); if (!lv) return;
-  const count = (evo ? 8 : 1 + Math.floor(lv/2)) + extra();
-  const dmg = (8 + lv*4) * (evo ? 2 : 1);
+  // 진화: 예전엔 8발을 사방으로만 뿌려 조준한 적에게 1발밖에 안 맞음 (진화하면 오히려 약해지던 버그)
+  //       → 조준한 단검은 그대로 + 사방으로 8발 추가
+  const aimed = 1 + Math.floor(lv/2) + extra();
+  const count = aimed + (evo ? 8 : 0);
+  const dmg = (10 + lv*5) * (evo ? 2 : 1);
   const target = nearestEnemy(S.p);
   const baseAng = target ? Math.atan2(target.y - S.p.y, target.x - S.p.x)
                          : (S.p.face < 0 ? Math.PI : 0);
   for (let i = 0; i < count; i++) {
-    const a = evo ? baseAng + i*TAU/count : baseAng + (i-(count-1)/2)*0.17;
+    const a = i < aimed ? baseAng + (i-(aimed-1)/2)*0.17 : baseAng + (i - aimed + .5)*TAU/8;
     S.bullets.push({ x:S.p.x, y:S.p.y, vx:Math.cos(a)*(evo?520:460), vy:Math.sin(a)*(evo?520:460),
       r:evo?7:5, dmg, l:evo?1.8:1.4, pierce:(evo?5:1) + Math.floor(lv/4) + extraPierce(),
       hitSet:new Set(), c:evo?'#c9a6ff':'#ffe9a8', kind:'knife', ang:a, evo });
@@ -1301,10 +1625,11 @@ function fireKnife() {
 }
 function fireNova() {
   const lv = S.up.nova, evo = isEvo('nova'); if (!lv) return;
-  const rad = (70 + lv*16) * (evo ? 1.9 : 1), base = (14 + lv*7) * (evo ? 2 : 1);
+  const rad = (70 + lv*16) * (evo ? 1.9 : 1), base = (18 + lv*9) * (evo ? 2 : 1);
   S.zaps.push({ kind:'nova', x:S.p.x, y:S.p.y, r:0, max:rad, l:.34, ml:.34, evo });
   for (const e of [...S.enemies])
     if (dist2(e, S.p) < (rad + e.r)**2) damageEnemy(e, base, S.p.x, S.p.y, evo ? 520 : 260);
+  hitBarrels(S.p.x, S.p.y, rad);
   S.shake = Math.max(S.shake, evo ? 9 : 5);
   SFX.nova();
 }
@@ -1322,7 +1647,7 @@ function fireBolt() {
 }
 function tickGarlic(dt) {
   const lv = S.up.garlic, evo = isEvo('garlic'); if (!lv) return;
-  const rad = (60 + lv*12) * (evo ? 1.6 : 1), dps = (10 + lv*6) * (evo ? 2.2 : 1);
+  const rad = (60 + lv*12) * (evo ? 1.6 : 1), dps = (12 + lv*7) * (evo ? 2.2 : 1);
   for (const e of S.enemies) {
     if (dist2(e, S.p) < (rad + e.r)**2) {
       const before = e.hp;
@@ -1335,7 +1660,7 @@ function tickGarlic(dt) {
 function tickOrbit(dt) {
   const lv = S.up.orbit, evo = isEvo('orbit'); if (!lv) return;
   const n = (1 + Math.floor((lv+1)/2)) * (evo ? 2 : 1);
-  const dmg = (10 + lv*5) * (evo ? 2 : 1);
+  const dmg = (12 + lv*6) * (evo ? 2 : 1);
   const rad = (62 + lv*5) * (evo ? 1.45 : 1);
   S.orbAng += dt * (2.0 + lv*0.16);
   for (let i = 0; i < n; i++) {
@@ -1406,7 +1731,7 @@ function fireLaser() {
 // 냉기 파동: 주변 적을 느리게(진화하면 얼림)
 function fireFrost() {
   const lv = S.up.frost, evo = isEvo('frost'); if (!lv) return;
-  const rad = (110 + lv*14) * (evo ? 1.6 : 1), dmg = (8 + lv*4) * (evo ? 3 : 1);
+  const rad = (110 + lv*14) * (evo ? 1.6 : 1), dmg = (12 + lv*6) * (evo ? 3 : 1);
   S.zaps.push({ kind:'frost', x:S.p.x, y:S.p.y, r:0, max:rad, l:.4, ml:.4, evo });
   for (const e of [...S.enemies]) {
     if (dist2(e, S.p) >= (rad + e.r)**2) continue;
@@ -1482,6 +1807,7 @@ function tickStrikes(dt) {
     S.strikes.splice(i, 1);
     S.zaps.push({ kind:'sat', x:s.x, y:s.y, r:s.r, l:.35, ml:.35, evo:s.evo });
     for (const e of [...S.enemies]) if (dist2(e, s) < (s.r + e.r)**2) damageEnemy(e, s.dmg, s.x, s.y, 260);
+    hitBarrels(s.x, s.y, s.r);
     particles(s.x, s.y, 14, s.evo ? '#ffe066' : '#7fe9ff', 220, .45, 3);
     S.shake = Math.max(S.shake, 6);
     noise(.25, .12, 900); tone(160, .3, 'sawtooth', .08, 50);
@@ -1511,7 +1837,8 @@ function killEnemy(e) {
   if (gs('steal') && !S.p.dead) S.p.hp = Math.min(S.p.maxhp, S.p.hp + gs('steal'));
   particles(e.x, e.y, e.boss ? 60 : 12, e.c, e.boss ? 320 : 170, .6, e.boss ? 5 : 3);
   if (e.final) {   // 최종 보스 처치 = 게임 클리어: 남은 적·탄 정리, 코인을 모은 뒤 클리어 화면
-    S.arena = null; S.finalDone = true; S.clearT = 2.5;
+    // 결투장은 이번 프레임이 끝난 뒤 닫음 (보스 행동 도중 반격 충격파로 죽어도 S.arena를 쓰는 코드가 터지지 않게)
+    S.arenaClose = true; S.finalDone = true; S.clearT = 2.5;
     for (let k = 0; k < 40; k++) dropCoin(e.x + rand(-90,90), e.y + rand(-90,90));
     for (const g of S.gems) g.vac = true;
     for (const o of S.enemies) particles(o.x, o.y, 6, o.c, 120, .4, 3);
@@ -1529,6 +1856,18 @@ function killEnemy(e) {
     for (let k = 0; k < 8; k++) dropCoin(e.x + rand(-50,50), e.y + rand(-50,50));
     SFX.kill();
   } else {
+    if (e.ai === 'gob') {   // 황금 고블린: 금화 + 보물 상자
+      for (let k = 0; k < 20; k++) dropCoin(e.x + rand(-50,50), e.y + rand(-50,50));
+      S.pickups.push({ x:e.x, y:e.y, r:18, kind:'chest', bob:0 });
+      popText(e.x, e.y - 40, '황금 고블린 처치!', '#ffd36b', true);
+    }
+    if (e.elite) {   // 정예병: 금화 3개 · 마지막 정예병은 보물 상자
+      for (let k = 0; k < 3; k++) dropCoin(e.x + rand(-20,20), e.y + rand(-20,20));
+      if (--S.eliteLeft === 0) {
+        S.pickups.push({ x:e.x, y:e.y, r:18, kind:'chest', bob:0 });
+        popText(e.x, e.y - 40, '정예 습격 격퇴!', '#ffd36b', true);
+      }
+    }
     if (e.ai === 'slime') {   // 분열: 작은 슬라임 2마리가 양옆으로 튀어나옴
       for (const s of [-1, 1]) {
         const a = rand(0, TAU), c = makeEnemy(SLIMELET, e.x + s*8, e.y);
@@ -1555,7 +1894,7 @@ function dropCoin(x, y) {
 }
 function hurtPlayer(amount) {
   if (S.p.inv > 0 || S.p.dead) return;
-  amount *= (1 - (S.up.armor||0)*0.07) * (1 - gs('def')) * (1 - hero().def);
+  amount *= (1 - (S.up.armor||0)*0.07) * (1 - gs('def')) * (1 - hero().def) * (S.curse > 0 ? 1.25 : 1);
   S.p.hp -= amount;
   if (isMax('armor')) {   // 방어구 만렙: 반격 충격파
     S.zaps.push({ kind:'nova', x:S.p.x, y:S.p.y, r:0, max:130, l:.3, ml:.3, evo:true });
@@ -1582,7 +1921,7 @@ function hurtPlayer(amount) {
 
 // ══════════════════════════ 레벨업 / 진화 ══════════════════════════
 function gainXP(v) {
-  S.xp += v * XP_MUL * (1 + (S.up.growth||0)*0.12 + gs('xp'));
+  S.xp += v * XP_MUL * (1 + (S.up.growth||0)*0.12 + gs('xp')) * (S.curse > 0 ? 2 : 1);
   while (S.xp >= S.xpNeed) {
     S.xp -= S.xpNeed; S.lvl++;
     S.xpNeed = xpNeedAt(S.lvl);   // 레벨업 필요 경험치 20% 감소
@@ -1615,6 +1954,7 @@ function pickOptions() {
   return out;
 }
 function openLevelUp(fromChest) {
+  if (S.state === 'over') return;   // 죽은 프레임에 상자를 주워도 레벨업 창이 게임 오버 밑에 열리지 않게
   S.state = 'levelup';
   const box = $('cards'); box.innerHTML = '';
   const opts = pickOptions();
@@ -1622,7 +1962,7 @@ function openLevelUp(fromChest) {
     const n = S.chestPicks + S.pendingLevels;
     S.chestPicks = 0; S.pendingLevels = 0;
     S.p.hp = S.p.maxhp; S.gold += 5*n;
-    popText(S.p.x, S.p.y - 40, `회복 · +${5*n} 🪙`, '#ffd36b');
+    popText(S.p.x, S.p.y - 40, `회복 · +${5*n} 💰`, '#ffd36b');
     $('levelup').classList.add('hidden');
     S.state = 'play'; return;
   }
@@ -1748,6 +2088,10 @@ function update(dt) {
     p.x = clamp(p.x, A2.x - A2.h + p.r, A2.x + A2.h - p.r);
     p.y = clamp(p.y, A2.y - A2.h + p.r, A2.y + A2.h - p.r);
   }
+  // 장애물: 플레이어는 못 지나감
+  refreshObstacles();
+  pushOut(p, len > 0 || p.dashT > 0, p.dashDir);
+  tickBarrels(dt);
 
   // ── 최종 보스 ──
   if (!S.finalDone && !S.arena) {
@@ -1761,7 +2105,7 @@ function update(dt) {
   }
 
   // ── 스폰 (결투 중에는 멈춤) ──
-  const spawnRate = 1 / (1.6 + S.g/22);
+  const spawnRate = 1 / (1.6 + S.g/22) / (S.curse > 0 ? 2 : 1);   // 저주: 2배로 몰려옴
   S.timers.spawn += dt*PACE;   // 압축한 만큼 더 자주 나옴 (총 적 수는 10분 판과 같음)
   while (S.timers.spawn >= spawnRate) {
     S.timers.spawn -= spawnRate;
@@ -1791,6 +2135,7 @@ function update(dt) {
   if (S.g >= S.nextBoss && !S.mid && !S.arena && !S.finalDone && S.g < S.finalAt - 15) {
     spawnBoss(); S.nextBoss = S.g + 60;
   }
+  tickEvents(dt);
 
   // ── 조준 방향 갱신 (가장 가까운 적, 없으면 이동 방향) ──
   const tgt = nearestEnemy(p);
@@ -1805,7 +2150,7 @@ function update(dt) {
   const cd = cdMul();
   if (S.up.shot) {
     S.timers.shot += dt;
-    const iv = (isEvo('shot') ? 0.14 : 0.28) * cd;
+    const iv = SHOT_IV() * cd;
     if (S.timers.shot >= iv) {   // 가까운 적이 있으면 자동 연사
       if (hasTgt) { S.timers.shot = 0; fireShot(); }
       else S.timers.shot = iv;
@@ -1813,7 +2158,7 @@ function update(dt) {
   }
   if (S.up.knife) { S.timers.knife += dt; const iv = (isEvo('knife')?0.62:0.85)*cd;
     if (S.timers.knife >= iv) { S.timers.knife -= iv; fireKnife(); } }
-  if (S.up.nova)  { S.timers.nova += dt; const iv = (isEvo('nova')?2.2:3.0)*cd;
+  if (S.up.nova)  { S.timers.nova += dt; const iv = (isEvo('nova')?2.0:2.6)*cd;
     if (S.timers.nova >= iv) { S.timers.nova -= iv; fireNova(); } }
   if (S.up.bolt)  { S.timers.bolt += dt; const iv = (isEvo('bolt')?1.6:2.2)*cd;
     if (S.timers.bolt >= iv) { S.timers.bolt -= iv; fireBolt(); } }
@@ -1823,7 +2168,7 @@ function update(dt) {
     if (S.timers.rang >= iv) { S.timers.rang -= iv; fireRang(); } }
   if (S.up.laser) { S.timers.laser += dt; const iv = (isEvo('laser')?1.8:2.4)*cd;
     if (S.timers.laser >= iv) { S.timers.laser -= iv; fireLaser(); } }
-  if (S.up.frost) { S.timers.frost += dt; const iv = 3.5*cd;
+  if (S.up.frost) { S.timers.frost += dt; const iv = 3.0*cd;
     if (S.timers.frost >= iv) { S.timers.frost -= iv; fireFrost(); } }
   if (S.up.prism) { S.timers.prism += dt; const iv = 2.0*cd;
     if (S.timers.prism >= iv) { S.timers.prism -= iv; firePrism(); } }
@@ -1884,6 +2229,11 @@ function update(dt) {
         e.x += Math.cos(a)*e.spd*dt; e.y += Math.sin(a)*e.spd*dt;
         if (e.chCd <= 0 && d2p < 380*380) { e.aimT = .7; e.chCd = rand(3.5, 5); }
       }
+    } else if (e.ai === 'gob') {
+      // 황금 고블린: 지그재그로 도망
+      const fa = a + Math.PI + Math.sin(S.t*3 + e.bob)*.8;
+      e.x += Math.cos(fa)*e.spd*dt; e.y += Math.sin(fa)*e.spd*dt;
+      if (Math.random() < dt*10) particles(e.x, e.y, 1, '#ffd23f', 40, .4, 3);
     } else if (e.ranged) {
       // 원거리 적: 거리 유지하며 사격
       const want = 250*250;
@@ -1898,6 +2248,7 @@ function update(dt) {
     e.spd = spd0;
     e.x += e.kb.x*dt; e.y += e.kb.y*dt;
     e.kb.x *= Math.pow(0.0005, dt); e.kb.y *= Math.pow(0.0005, dt);
+    if (!e.final) pushOut(e, true);   // 장애물에 막히면 옆으로 돌아감
     if (S.arena) {
       const A2 = S.arena;
       e.x = clamp(e.x, A2.x - A2.h + e.r, A2.x + A2.h - e.r);
@@ -1916,12 +2267,13 @@ function update(dt) {
         }
       }
     }
-    if (d2p < (e.r + p.r)**2) hurtPlayer(e.dmg);
+    if (d2p < (e.r + p.r)**2 && e.dmg > 0) hurtPlayer(e.dmg);
     if (d2p > (Math.max(W,H)*1.6)**2 && !e.boss) {
       const a2 = rand(0,TAU), r2 = Math.max(W,H)*.6;
       e.x = p.x + Math.cos(a2)*r2; e.y = p.y + Math.sin(a2)*r2;
     }
   }
+  if (S.arenaClose) { S.arena = null; S.arenaClose = false; }
 
   // ── 아군 탄 ──
   for (let i = S.bullets.length - 1; i >= 0; i--) {
@@ -1949,6 +2301,9 @@ function update(dt) {
     }
     b.x += b.vx*dt; b.y += b.vy*dt; b.l -= dt;
     let dead = b.l <= 0;
+    // 폭발 통에 맞으면 터뜨림 (탄은 장애물을 그냥 통과)
+    for (const o of S.obs)
+      if (o.barrel && !o.lit && (b.x - o.x)**2 + (b.y - o.y)**2 < (b.r + o.r)**2) { hitBarrels(o.x, o.y, 0); if (--b.pierce <= 0) dead = true; }
     for (const e of S.enemies) {
       if (b.hitSet.has(e)) continue;
       if (dist2(b, e) < (b.r + e.r)**2) {
@@ -1965,9 +2320,15 @@ function update(dt) {
     if (!b) continue;   // 부활하면서 탄이 전부 지워진 경우
     b.x += b.vx*dt; b.y += b.vy*dt; b.l -= dt;
     if (dist2(b, p) < (b.r + p.r)**2) { hurtPlayer(b.dmg); S.ebullets.splice(i,1); continue; }
+    if (inObstacle(b.x, b.y)) {   // 장애물이 적 탄을 막아 줌
+      particles(b.x, b.y, 3, b.c, 80, .25, 2);
+      S.ebullets.splice(i, 1); continue;
+    }
     const out = S.arena && (Math.abs(b.x - S.arena.x) > S.arena.h || Math.abs(b.y - S.arena.y) > S.arena.h);
     if (b.l <= 0 || out) S.ebullets.splice(i, 1);
   }
+
+  if (S.state === 'over') return;   // 이번 프레임에 죽었으면 더 줍지 않음 (골드는 이미 저장됨)
 
   // ── 보석 / 코인 ──
   const magR = 72 * magMul();
@@ -1987,7 +2348,7 @@ function update(dt) {
     }
     if (d2 < (p.r + g.r + 4)**2) {
       if (g.coin) {
-        const amt = Math.round(S.st.gold * (1 + mLv('mgold')*0.25 + gs('gold')));   // 뒤 단계일수록 코인 가치 ↑
+        const amt = Math.round(S.st.gold * (1 + mLv('mgold')*0.25 + gs('gold')) * (S.curse > 0 ? 2 : 1));   // 뒤 단계일수록 코인 가치 ↑ · 저주 중 2배
         S.gold += amt;
         popText(g.x, g.y - 10, '+' + amt, '#ffd36b');
         tone(1320, .07, 'square', .05, 1760);
@@ -2006,6 +2367,7 @@ function update(dt) {
     it.bob += dt*4;
     if (dist2(it, p) < (p.r + it.r + 6)**2) {
       if (ITEMS[it.kind]) ITEMS[it.kind].fn(p);
+      else if (it.kind === 'altar') touchAltar(p);
       else {
         S.chestPicks += 1 + Math.floor(Math.random()*2);
         popText(p.x, p.y - 36, '보물 상자!', '#ffd36b', true);
@@ -2121,6 +2483,9 @@ function render() {
   ctx.globalAlpha = 1;
   drawBossFx();
 
+  // 맵 장애물
+  for (const o of S.obs || []) if (onScreen(o, o.r + 30)) drawObstacle(o);
+
   // 보석 / 코인
   // 빛번짐(shadowBlur)은 개수가 많으면 매우 느려서, 반투명 후광 원으로 대신함
   for (const gm of S.gems) {
@@ -2156,6 +2521,12 @@ function render() {
     if (it.kind === 'chest') {
       ctx.save(); ctx.shadowBlur = 20; ctx.shadowColor = '#ffd36b';
       ctx.font = '32px serif'; ctx.fillText('🎁', it.x, it.y + yo); ctx.restore();
+    } else if (it.kind === 'altar') {   // 저주의 제단: 보라색으로 일렁임
+      ctx.save();
+      ctx.fillStyle = `rgba(160,60,255,${.18 + Math.sin(it.bob*2)*.08})`;
+      ctx.beginPath(); ctx.arc(it.x, it.y, 34, 0, TAU); ctx.fill();
+      ctx.shadowBlur = 24; ctx.shadowColor = '#b05cff';
+      ctx.font = '36px serif'; ctx.fillText('💀', it.x, it.y + yo); ctx.restore();
     } else ctx.fillText(ITEMS[it.kind].ico, it.x, it.y + yo);
   }
 
@@ -2188,6 +2559,10 @@ function render() {
     if (e.kind) drawBossDeco(e, false);   // 단계 보스: 몸통 뒤 장식 (거미 다리)
     ctx.fillStyle = e.hit > 0 ? '#ffffff' : e.c;
     ctx.beginPath(); ctx.arc(0, 0, e.r, 0, TAU); ctx.fill();
+    if (e.elite || e.ai === 'gob') {   // 정예병·황금 고블린: 금색 테두리
+      ctx.strokeStyle = `rgba(255,215,80,${.7 + Math.sin(S.t*10)*.3})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, e.r + 3, 0, TAU); ctx.stroke();
+    }
     if (e.slow > 0) {   // 냉기: 파란 얼음 막
       ctx.fillStyle = e.slowMul === 0 ? 'rgba(170,230,255,.7)' : 'rgba(120,200,255,.35)';
       ctx.beginPath(); ctx.arc(0, 0, e.r + 1, 0, TAU); ctx.fill();
@@ -2388,7 +2763,7 @@ function render() {
   if (!p.dead && S.up.shot) {
     const ang = Math.atan2(S.aim.y, S.aim.x);
     const evoS = isEvo('shot');
-    const ready = S.timers.shot >= (evoS?0.14:0.28)*cdMul();
+    const ready = S.timers.shot >= SHOT_IV()*cdMul();
     // 총구 방향 가이드
     ctx.save();
     ctx.globalAlpha = .5;
@@ -2451,6 +2826,23 @@ function render() {
     }
   }
 
+  // 이벤트 진행 표시 (화면 위쪽)
+  const evb = [];
+  if (S.ev && EVENTS[S.ev.k].banner) evb.push(EVENTS[S.ev.k].banner(S.ev));
+  if (S.curse > 0) evb.push(`💀 저주 ${Math.ceil(S.curse)}초 · 경험치·골드 2배`);
+  if (evb.length) {
+    ctx.save();
+    ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    evb.forEach((s, i) => {
+      const y = 70 + i*26, w = ctx.measureText(s).width + 28;
+      ctx.fillStyle = 'rgba(10,8,20,.6)';
+      ctx.fillRect(W/2 - w/2, y - 11, w, 22);
+      ctx.fillStyle = s.startsWith('💀') ? '#d79bff' : '#7fffd4';
+      ctx.fillText(s, W/2, y);
+    });
+    ctx.restore();
+  }
+
   if (S.flash > 0) {
     ctx.fillStyle = `rgba(${S.flashC},${S.flash*.35})`;
     ctx.fillRect(0, 0, W, H);
@@ -2465,21 +2857,32 @@ function render() {
 }
 
 // ══════════════════════════ HUD ══════════════════════════
+// 값이 바뀐 것만 화면에 반영 (매 프레임 DOM을 다시 쓰면 휴대폰에서 버벅임)
+const hudCache = {};
+function setHud(id, prop, v) {
+  const key = id + prop;
+  if (hudCache[key] === v) return;
+  hudCache[key] = v;
+  const el = $(id);
+  if (prop === 'text') el.textContent = v; else el.style[prop] = v;
+}
+const pctW = v => (Math.round(clamp(v, 0, 1)*400)/4) + '%';   // 0.25% 단위로 반올림
 function updateHUD() {
-  $('xpfill').style.width = (S.xp/S.xpNeed*100) + '%';
-  $('xptxt').textContent = `LV ${S.lvl}`;
-  $('topbar').textContent = fmtTime(S.t);
-  $('killtxt').textContent = `처치 ${S.kills}`;
-  $('goldtxt').textContent = `🪙 ${S.gold}`;
-  $('hpfill').style.width = clamp(S.p.hp/S.p.maxhp*100, 0, 100) + '%';
-  $('hptxt').textContent = `${Math.ceil(S.p.hp)} / ${Math.round(S.p.maxhp)}`;
+  setHud('xpfill', 'width', pctW(S.xp/S.xpNeed));
+  setHud('xptxt', 'text', `LV ${S.lvl}`);
+  setHud('topbar', 'text', fmtTime(S.t));
+  setHud('killtxt', 'text', `처치 ${S.kills}`);
+  setHud('goldtxt', 'text', `💰 ${S.gold}`);
+  setHud('hpfill', 'width', pctW(S.p.hp/S.p.maxhp));
+  setHud('hptxt', 'text', `${Math.max(0, Math.ceil(S.p.hp))} / ${Math.round(S.p.maxhp)}`);
   const ready = S.p.dashCd <= 0;
-  $('dashfill').style.width = ready ? '100%' : (1 - S.p.dashCd/dashCdMax())*100 + '%';
-  $('dashfill').style.background = ready ? 'linear-gradient(90deg,#39c6ff,#7fe9ff)' : '#2d5c70';
-  $('dashtxt').textContent = ready ? 'DASH [Space] 준비' : 'DASH 재충전…';
-  $('dashBtn').classList.toggle('cool', !ready);  const bEl = $('boss');
-  if (S.boss) { bEl.style.display = 'block'; $('bossfill').style.width = clamp(S.boss.hp/S.boss.maxhp*100,0,100) + '%'; }
-  else bEl.style.display = 'none';
+  setHud('dashfill', 'width', ready ? '100%' : pctW(1 - S.p.dashCd/dashCdMax()));
+  setHud('dashfill', 'background', ready ? 'linear-gradient(90deg,#39c6ff,#7fe9ff)' : '#2d5c70');
+  setHud('dashtxt', 'text', ready ? 'DASH [Space] 준비' : 'DASH 재충전…');
+  if (hudCache.dashCool !== !ready) { hudCache.dashCool = !ready; $('dashBtn').classList.toggle('cool', !ready); }
+  setHud('boss', 'display', S.boss ? 'block' : 'none');
+  if (S.boss) setHud('bossfill', 'width', pctW(S.boss.hp/S.boss.maxhp));
+  tickTips();
 }
 function renderSlots() {
   // 착용한 장비 (체력바 위) — 마우스를 올리면 능력치
@@ -2508,8 +2911,8 @@ function renderSlots() {
 // ══════════════════════════ UI 구성 ══════════════════════════
 function renderTitle() {
   $('best').textContent = SV.best > 0
-    ? `최고 기록  ${fmtTime(SV.best)}  ·  최다 처치 ${SV.bestKills}  ·  보유 🪙 ${SV.gold}`
-    : `보유 🪙 ${SV.gold}`;
+    ? `최고 기록  ${fmtTime(SV.best)}  ·  최다 처치 ${SV.bestKills}  ·  보유 💰 ${SV.gold}`
+    : `보유 💰 ${SV.gold}`;
   const done = STAGES.filter((_, i) => SV.sClr?.[i]).length;
   if (done) $('best').textContent += `  ·  👑 클리어 ${done}/${STAGES.length}단계`;
   const eq = Object.keys(SLOTS).map(sl => GEAR[SV.equip[sl]]).filter(Boolean);
@@ -2520,7 +2923,7 @@ function renderTitle() {
 let shopTab = 'weapon';
 const TABS = { weapon:'⚔️ 무기', armor:'🛡️ 갑옷', acc:'💍 장신구', train:'📘 훈련' };
 function renderShop() {
-  $('shopGold').textContent = `🪙 ${SV.gold}`;
+  $('shopGold').textContent = `💰 ${SV.gold}`;
   const tabs = $('shopTabs'); tabs.innerHTML = '';
   for (const t in TABS) {
     const el = document.createElement('button');
@@ -2543,7 +2946,7 @@ function renderShop() {
         <span class="ds">${on ? '장착 중' : own ? '보유' : ''}</span></div>
       <div class="ds">${gearDesc(g)}</div>
       <button class="${on ? 'uneq' : own ? 'eqb' : ''}" ${!own && !can ? 'disabled' : ''}>${
-        on ? '장착 해제' : own ? '장착하기' : `🪙 ${g.cost} 에 구매`}</button>`;
+        on ? '장착 해제' : own ? '장착하기' : `💰 ${g.cost} 에 구매`}</button>`;
     el.querySelector('button').onclick = () => {
       if (on) delete SV.equip[g.slot];
       else if (own) SV.equip[g.slot] = id;
@@ -2564,7 +2967,7 @@ function renderTrain(box) {
     el.innerHTML = `<div class="top"><span class="nm">${m.ico} ${m.nm}</span>
         <span class="pip">${pips}</span></div>
       <div class="ds">${m.ds}</div>
-      <button ${maxed || !can ? 'disabled' : ''}>${maxed ? 'MAX' : `🪙 ${cost} 에 훈련`}</button>`;
+      <button ${maxed || !can ? 'disabled' : ''}>${maxed ? 'MAX' : `💰 ${cost} 에 훈련`}</button>`;
     if (!maxed && can) el.querySelector('button').onclick = () => {
       SV.gold -= cost; SV.meta[k] = lv + 1; save(); SFX.buy(); renderShop(); renderTitle();
     };
@@ -2606,12 +3009,40 @@ addEventListener('keydown', e => {
   }
   if (k === 'e' && !e.repeat) cycleFx();
   if (k === 'v' && !e.repeat) toggleShake();
-  if (k === 'm') {
-    A.muted = !A.muted; SV.muted = A.muted; save();
-    $('mute').innerHTML = A.muted ? '♪ OFF <span style="color:#444a5e">(M)</span>'
-                                  : '♪ ON <span style="color:#444a5e">(M)</span>';
-  }
+  if (k === 'm' && !e.repeat) toggleMute();
+  if (k === 'escape' && !$('help').classList.contains('hidden')) closeHelp();
 });
+// 소리 켜기/끄기 (M 키 · 일시정지 메뉴 버튼)
+function muteLabel() {
+  $('mute').innerHTML = `♪ ${A.muted ? 'OFF' : 'ON'} <span style="color:#444a5e">(M)</span>`;
+  $('soundBtn').textContent = `🔊 소리: ${A.muted ? 'OFF' : 'ON'}  (M)`;
+}
+function toggleMute() {
+  A.muted = !A.muted; SV.muted = A.muted; save(); muteLabel();
+}
+muteLabel();
+$('soundBtn').onclick = toggleMute;
+// 도움말
+function closeHelp() { $('help').classList.add('hidden'); $('title').classList.remove('hidden'); }
+$('helpBtn').onclick = () => { initAudio(); $('title').classList.add('hidden'); $('help').classList.remove('hidden'); };
+$('helpClose').onclick = closeHelp;
+// 처음 하는 판: 화면 아래에 안내 문구를 차례로 보여 줌 (SV.tut = 본 적 있음)
+const TIPS = [
+  [1,  () => document.body.classList.contains('touch') ? '화면을 끌어서 움직이세요' : 'WASD 또는 방향키로 움직이세요'],
+  [7,  () => '공격은 자동! 가까운 적을 알아서 노려요'],
+  [14, () => '적이 떨어뜨린 💎 보석을 모으면 레벨업'],
+  [24, () => document.body.classList.contains('touch') ? '위험하면 DASH 버튼 — 잠깐 무적' : '위험하면 Space로 대시 — 잠깐 무적'],
+  [36, () => '5분 버티면 단계 보스 등장! 잡으면 클리어'],
+];
+function tickTips() {
+  const el = $('tip');
+  if (SV.tut || BOSS_TEST || MAX_TEST) { if (el.style.opacity !== '0') el.style.opacity = '0'; return; }
+  let cur = null;
+  for (const [t, f] of TIPS) if (S.t >= t && S.t < t + 5.5) cur = f();
+  if (cur) { if (el.textContent !== cur) el.textContent = cur; el.style.opacity = '1'; }
+  else el.style.opacity = '0';
+  if (S.t > TIPS[TIPS.length - 1][0] + 6) { SV.tut = true; save(); el.style.opacity = '0'; }
+}
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 // 내 스킬 이펙트 밝기: 100% → 60% → 30%
 function fxLabel() {
@@ -2676,6 +3107,7 @@ cv.addEventListener('touchend', touchEnd);
 cv.addEventListener('touchcancel', touchEnd);
 $('dashBtn').addEventListener('touchstart', e => { e.preventDefault(); T.dash = true; }, { passive:false });
 $('dashBtn').addEventListener('touchend', () => { T.dash = false; });
+$('dashBtn').addEventListener('touchcancel', () => { T.dash = false; });
 $('dashBtn').addEventListener('mousedown', () => { T.dash = true; });
 $('dashBtn').addEventListener('mouseup', () => { T.dash = false; });
 $('pauseBtn').onclick = () => { if (S.state === 'play' || S.state === 'pause') togglePause(); };
@@ -2699,7 +3131,7 @@ function startGame(stage = curStage) {
   if (MAX_TEST) {
     for (const k in UPGRADES) while (!isMax(k)) applyUpgrade(k, false, false);   // 테스트: 전부 만렙
     S.pendingLevels = 0; S.state = 'play'; S.p.hp = S.p.maxhp; renderSlots();
-    S.t = S.finalAt/PACE - 40; S.g = S.t*PACE; S.nextBoss = 9999;   // 테스트: 보스 40초 전 시작 (중간 보스 없음)
+    S.t = S.finalAt/PACE - 40; S.g = S.t*PACE; S.nextBoss = 9999; S.nextEv = 9999;   // 테스트: 보스 40초 전 시작 (중간 보스·이벤트 없음)
   } else if (BOSS_TEST) {   // 보스 테스트: 정한 레벨만큼 자동 강화 (무기 우선) → 5초 뒤 단계 보스
     const PRI = { dmg:46, cdr:42, amount:40, hp:36, armor:36, luck:30, regen:22, spd:20, mag:18, growth:15 };
     S.pendingLevels = 0;
@@ -2717,7 +3149,7 @@ function startGame(stage = curStage) {
       applyUpgrade(best, false, false);
     }
     S.lvl = BOSS_TEST; S.xpNeed = xpNeedAt(S.lvl); S.state = 'play'; S.p.hp = S.p.maxhp; renderSlots();
-    S.t = S.finalAt/PACE - 5; S.g = S.t*PACE; S.nextBoss = 9999; S.nextSwarm = 9999;
+    S.t = S.finalAt/PACE - 5; S.g = S.t*PACE; S.nextBoss = 9999; S.nextSwarm = 9999; S.nextEv = 9999;
   } else if (S.pendingLevels > 0) openLevelUp();
 }
 function togglePause() {
@@ -2725,7 +3157,7 @@ function togglePause() {
     S.state = 'pause';
     $('pauseStats').innerHTML =
       `생존 <b>${fmtTime(S.t)}</b> · 레벨 <b>${S.lvl}</b> · 처치 <b>${S.kills}</b><br>
-       누적 피해 <b>${Math.round(S.dmgDone).toLocaleString()}</b> · 획득 <b>🪙${S.gold}</b><br>
+       누적 피해 <b>${Math.round(S.dmgDone).toLocaleString()}</b> · 획득 <b>💰${S.gold}</b><br>
        ${Object.keys(S.up).map(k => isEvo(k) ? `${EVOS[k].ico}${EVOS[k].nm}★`
          : `${UPGRADES[k].ico}${UPGRADES[k].nm} Lv${S.up[k]}`).join(' · ')}`;
     $('pause').classList.remove('hidden');
@@ -2759,13 +3191,13 @@ function gameOver(clear) {
     : isBest ? 'N E W   R E C O R D' : 'G A M E   O V E R';
   $('goTitle').style.color = clear ? '#e0a6ff' : isBest ? '#8de0a0' : '#ffd36b';
   $('goStats').innerHTML =
-    (clear ? `<span style="color:#e0a6ff">👑 ${BOSSES[S.st.boss].nm} 처치!</span> · 클리어 보너스 🪙 ${S.st.bonus}<br>`
+    (clear ? `<span style="color:#e0a6ff">👑 ${BOSSES[S.st.boss].nm} 처치!</span> · 클리어 보너스 💰 ${S.st.bonus}<br>`
       + (last ? '<span style="color:#ffd36b">모든 단계를 정복했다!</span><br>' : `<span style="color:#8de0a0">🔓 ${n + 2}단계 「${STAGES[n + 1].nm}」 열림!</span><br>`)
       + newHeroes.map(k => `<span style="color:#ffd36b">🔓 새 캐릭터 「${HEROES[k].ico} ${HEROES[k].nm}」 해금!</span><br>`).join('') : '') +
     `<span style="color:#9aa0b5">${n + 1}단계 · ${S.st.ico} ${S.st.nm}</span><br>` +
     `${clear ? '클리어 시간' : '생존'} <b>${fmtTime(S.t)}</b><br>
      레벨 <b>${S.lvl}</b> · 처치 <b>${S.kills}</b> · 누적 피해 <b>${Math.round(S.dmgDone).toLocaleString()}</b><br>
-     획득 골드 <b>🪙 ${S.gold}</b>  →  보유 <b>🪙 ${SV.gold}</b><br>
+     획득 골드 <b>💰 ${S.gold}</b>  →  보유 <b>💰 ${SV.gold}</b><br>
      <span style="font-size:12.5px">${Object.keys(S.up).map(k => isEvo(k)
        ? `<span style="color:#d79bff">${EVOS[k].ico}${EVOS[k].nm}★</span>`
        : `${UPGRADES[k].ico}${UPGRADES[k].nm} Lv${S.up[k]}`).join(' · ')}</span>`;
@@ -2808,7 +3240,7 @@ function openStages() {
       <div class="ico">${open ? st.ico : '🔒'}</div>
       <div class="nm">${i + 1}단계 · ${st.nm}</div>
       <div class="bs">보스: ${open ? BOSSES[st.boss].nm : '???'}</div>
-      <div class="st">적 체력 ×${st.hp} · 공격 ×${st.dmg}<br>코인 ×${st.gold} · 클리어 보너스 🪙${st.bonus}</div>
+      <div class="st">적 체력 ×${st.hp} · 공격 ×${st.dmg}<br>코인 ×${st.gold} · 클리어 보너스 💰${st.bonus}</div>
       ${clr ? `<div class="clr">✅ 클리어 ${clr}회 · 최단 ${fmtTime(SV.sBest[i])}</div>`
              : open ? '<div class="st">도전 가능</div>' : `<div class="st">${i}단계를 클리어하면 열림</div>`}`;
     if (open) el.onclick = () => startGame(i);
@@ -2833,7 +3265,8 @@ $('retryBtn').onclick = toTitle;
 $('againBtn').onclick = () => startGame();
 $('reroll').onclick = reroll;
 $('resumeBtn').onclick = () => { if (S.state === 'pause') togglePause(); };
-$('quitBtn').onclick = () => { if (S.state !== 'pause') return; $('pause').classList.add('hidden'); gameOver(); };
+// 보스를 잡은 뒤(클리어 연출 중)에 포기해도 클리어로 인정
+$('quitBtn').onclick = () => { if (S.state !== 'pause') return; $('pause').classList.add('hidden'); gameOver(S.finalDone); };
 $('shopBtn').onclick = () => { initAudio(); renderShop(); $('title').classList.add('hidden'); $('shop').classList.remove('hidden'); };
 $('shopClose').onclick = () => { $('shop').classList.add('hidden'); $('title').classList.remove('hidden'); renderTitle(); };
 $('shopReset').onclick = () => {
