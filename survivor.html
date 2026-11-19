@@ -440,7 +440,9 @@ if (BOSS_TEST) document.title = `SURVIVOR (보스 테스트 Lv${BOSS_TEST})`;
 // ?open=1 : 모든 단계·영웅이 열린 채로 처음부터 플레이 (보통 장비 착용 · &gear=0 이면 장비 없이 · 세이브 분리)
 const OPEN_TEST = !MAX_TEST && !BOSS_TEST && new URLSearchParams(location.search).has('open');
 if (OPEN_TEST) document.title = 'SURVIVOR (단계 테스트)';
-const GEAR_TEST = (BOSS_TEST && new URLSearchParams(location.search).get('gear') === '1')   // ?boss=N&gear=1 : 3단계쯤의 보통 장비로 보스 테스트
+const GEAR_Q = new URLSearchParams(location.search).get('gear');
+const GEAR5 = (BOSS_TEST || OPEN_TEST) && GEAR_Q === '5';   // ?boss=N&gear=5 · ?open=1&gear=5 : 5단계에 도착할 때쯤 모이는 장비 (1~4단계 2판씩 ≈ 5000골드)
+const GEAR_TEST = (BOSS_TEST && (GEAR_Q === '1' || GEAR5))   // ?boss=N&gear=1 : 3단계쯤의 보통 장비로 보스 테스트
                || (OPEN_TEST && new URLSearchParams(location.search).get('gear') !== '0');
 if (GEAR_TEST) document.title += ' + 장비';
 const SAVE_KEY = MAX_TEST ? 'survivor_save_maxtest' : OPEN_TEST ? (GEAR_TEST ? 'survivor_save_open_gear' : 'survivor_save_open') : GEAR_TEST ? 'survivor_save_bosstest_gear' : BOSS_TEST ? 'survivor_save_bosstest' : 'survivor_save_v1';
@@ -511,6 +513,10 @@ if (MAX_TEST) {
 if (GEAR_TEST) {
   SV.meta = { mhp:4, mdmg:4, mspd:2, mdash:1 };
   SV.equip = { weapon:'great', armor:'chain', acc:'eye' };
+  if (GEAR5) {   // 5단계 도착 장비: 전설의 성검 · 사슬 갑옷 · 독수리의 눈 · 훈련 (체력6 피해6 속도3 대시2 부활1)
+    SV.meta = { mhp:6, mdmg:6, mspd:3, mdash:2, mrev:1 };
+    SV.equip = { weapon:'holy', armor:'chain', acc:'eye' };
+  }
   for (const id of Object.values(SV.equip)) SV.owned[id] = true;
 }
 const pct = v => (v >= 0 ? '+' : '-') + Math.round(Math.abs(v)*100) + '%';
@@ -644,6 +650,7 @@ const isMax = k => (S.up[k]||0) >= UPGRADES[k].max;   // 패시브 만렙 보너
 const S = {};
 function reset() {
   S.state = 'play';
+  S.cine = null;
   S.t = 0; S.g = 0; S.kills = 0; S.lvl = 1; S.xp = 0; S.xpNeed = 4;
   S.st = STAGES[curStage];   // 이번 판 단계: 나오는 적과 등장 시각을 단계 표에 맞춤 (등장 순서대로 정렬)
   S.etypes = ETYPES.filter(t => t.id in S.st.en).map(t => ({ ...t, at:S.st.en[t.id] })).sort((a, b) => a.at - b.at);
@@ -786,8 +793,11 @@ const BOSSES = {
             ease:{ rest:.7, meteor:.7, rush:1, wind:.8, cornerRush:true, lvScale:true } },   // 쉴 틈이 많아 쉬움 → 체력 약 2배 (1.1 → 2.15) · 패턴 사이 휴식 0.7배 · 운석 간격 0.7배 · 돌진 +1회 · 돌진 전 멈춤 0.8배 · 대지 강타 · 바위 투척 · 용암 바둑판 추가 · 돌진은 플레이어가 구석에 있을 때만 · 레벨 따라 강해짐
   eye:    { nm:'공허의 눈',   c:'#3a1f6b', r:54, hp:1.4, spd:1,   pats:['laser','blink','spiral','rings'], summon:[],      bc:['#7fd4ff','#4ff0ff'],
             ease:{ lzSpin:1.3, tp:1 } },   // 4단계치고 쉬움 → 원형 탄막 추가 · 레이저 회전 1.3배 · 순간이동 +1회
-  lord:   { nm:'심야의 군주', c:'#8a2be2', r:58, hp:1.8, spd:1,
-            pats:['spiral','rings','rush','summon','meteor','laser','blink','wall'], summon:['bat','wisp'], bc:['#c27bff','#ff6bd5'] },
+  lord:   { nm:'심야의 군주', c:'#8a2be2', r:58, hp:2.4, spd:1.1,
+            pats:['spiral','rings','rush','summon','meteor','laser','blink','wall','eclipse','stars'], summon:['bat','wisp'], bc:['#c27bff','#ff6bd5'],
+            ease:{ rest:.7, spiral:.88, wall:.92, gap:.95, meteor:.85, lzSpin:1.2, tp:1, rush:1, wind:.8, dmg:1.1, lvScale:true, frenzy:true, solo:true } },
+            // 마지막 보스라 어렵게 → 체력 1.8 → 2.4 · 공격력 +10% · 휴식 0.7배 · 탄막 조금 더 촘촘 · 레이저 회전 1.2배 · 순간이동/돌진 +1회 · 레벨 따라 강해짐
+            // solo: 기술끼리 겹치지 않음 (앞 기술의 운석·별이 다 떨어진 뒤, 남은 탄은 지우고 다음 기술) · frenzy: 체력 25%에 최후의 발악 (탄 속도 1.5배 · 휴식 더 짧게)
 };
 // 모든 단계 보스 공통 난이도: 체력 +15% · 공격력 +10% · 패턴 사이 휴식 0.9배
 const BOSS_HARD = { hp:1.15, dmg:1.1, rest:.9 };
@@ -1125,12 +1135,22 @@ function spawnFinal() {
   S.boss = {
     x:p.x, y:p.y - ARENA_H*.6, r:B.r, c:B.c, id:'final', boss:true, final:true, tier,
     kind:S.st.boss, nm:B.nm, pats:B.pats, summon:B.summon, bc:B.bc, ease:B.ease || {},
-    hp, maxhp:hp, spd:(70 + Math.min(tier, 30)*2)*B.spd, dmg:(40 + tier*10)*S.st.dmg*BOSS_HARD.dmg*(1 + over*.015), xp:200*tier,
+    hp, maxhp:hp, spd:(70 + Math.min(tier, 30)*2)*B.spd, dmg:(40 + tier*10)*S.st.dmg*BOSS_HARD.dmg*(1 + over*.015)*((B.ease && B.ease.dmg) || 1), xp:200*tier,
     hit:0, bob:0, kb:{x:0,y:0},
     pat:'chase', patT:2, last:'', fireCd:0, spAng:0, ringN:0, rushT:0, rushLeft:0, windT:0, enraged:false
   };
   S.enemies.push(S.boss);
-  if (over > 0) setTimeout(() => popText(p.x, p.y - 120, `${B.nm}이(가) 당신의 힘에 맞춰 강해졌다! (Lv${S.lvl})`, '#ff9a3d', true), 900);
+  if (S.st.boss === 'lord') {
+    S.cine = { k:'intro', t0:S.t, d:2.6, nm:B.nm };
+    const A2 = S.arena;
+    for (let i = 0; i < 16; i++) {   // 결투장 테두리를 따라 빛기둥이 차례로 솟음
+      const side = i % 4, u = (Math.floor(i/4) + .5)/4*2 - 1;
+      const x = A2.x + (side === 0 ? -A2.h : side === 1 ? A2.h : u*A2.h), y = A2.y + (side === 2 ? -A2.h : side === 3 ? A2.h : u*A2.h);
+      setTimeout(() => { if (S.boss && S.boss.kind === 'lord') (S.boss.fx ||= []).push({ kind:'pillar', x, y, r:50, l:.9, ml:.9 }); particles(x, y, 12, '#c27bff', 200, .5, 4); }, i*90);
+    }
+    setTimeout(() => { if (S.boss) { (S.boss.fx ||= []).push({ kind:'moonwave', x:S.boss.x, y:S.boss.y, r:20, max:800, l:1, ml:1 }); S.flash = .8; S.flashC = '200,120,255'; S.shake = 28; noise(.8, .2, 150); } }, 1500);
+  }
+  if (over > 0) setTimeout(() => popText(p.x, p.y - 120, `${B.nm}이(가) 당신의 힘에 맞춰 강해졌다! (Lv${S.lvl})`, '#ff9a3d', true), S.st.boss === 'lord' ? 2900 : 900);
   $('bosstxt').textContent = `${curStage + 1}단계 보스  ·  ${B.nm}`;
   S.flash = .7; S.shake = 22; S.flashC = '140,50,255';
   popText(p.x, p.y - 80, `${curStage + 1}단계 보스 — ${B.nm}`, '#d79bff', true);
@@ -1142,14 +1162,25 @@ function shootAng(e, ang, speed) {
     r:8, dmg:e.dmg*0.6, l:5, c:e.bc[e.enraged ? 1 : 0] });
 }
 function nextPattern(e) {
-  if (e.pat !== 'chase') { e.pat = 'chase'; e.patT = (e.enraged ? .6 : 1.1) * (e.ease.rest || 1) * BOSS_HARD.rest; return; }
+  if (e.pat !== 'chase') { e.pat = 'chase'; e.patT = (e.enraged ? .6 : 1.1) * (e.ease.rest || 1) * BOSS_HARD.rest * (e.frenzied ? .6 : 1);
+    if (e.ease.solo) e.patT = Math.max(e.patT, .6);   // 기술 사이 최소 0.6초 숨 돌릴 틈
+    return; }
+  if (e.ease.solo) {   // 기술끼리 겹치지 않게: 앞 기술이 끝까지 다 나올 때까지 기다림 (예고 원·바위·날아가는 탄)
+    const busy = (e.marks && e.marks.length) || (e.rocks && e.rocks.length);
+    e.soloW = (e.soloW || 0) + .15;
+    if (busy || (S.ebullets.length > 4 && e.soloW < 3.5)) { e.patT = .15; return; }   // 탄은 벽에 닿으면 사라짐 · 3.5초 넘게 남으면 그만 기다림
+    for (const b of S.ebullets) particles(b.x, b.y, 2, b.c, 50, .35, 2);   // 그래도 남은 몇 발만 별가루로 흩어짐
+    S.ebullets.length = 0; e.soloW = 0;
+  }
   let list = e.pats.filter(k => k !== e.last);   // 보스마다 쓰는 패턴이 다름
   if (e.ease.cornerRush) {   // 구석에 숨으면 돌진으로 몰아냄 · 아니면 돌진 대신 다른 기술
     const A2 = S.arena, corner = Math.abs(S.p.x - A2.x) > A2.h*.55 && Math.abs(S.p.y - A2.y) > A2.h*.55;
     if (corner && list.includes('rush') && Math.random() < .75) { list = ['rush']; bossCall(e, '구석 돌진!'); }
     else list = list.filter(k => k !== 'rush');
   }
+  if (e.forceEc) { list = ['eclipse']; e.forceEc = false; }   // 최후의 발악 직후엔 반드시 월식
   e.pat = e.last = list[Math.floor(Math.random()*list.length)];
+  if (e.pat !== 'meteor' && NO_RAIN.has(e.pat) && e.marks) e.marks = e.marks.filter(m => !m.rain);   // 남은 운석 비는 취소
   e.fireCd = 0;
   if (e.pat === 'spiral') e.patT = 2.8;
   if (e.pat === 'rings')  e.patT = 2.2;
@@ -1174,10 +1205,49 @@ function nextPattern(e) {
     bossCall(e, '십자 레이저!');
   }
   if (e.pat === 'blink')  { e.tpLeft = (e.enraged ? 4 : 3) + (e.ease.tp || 0); e.tpT = 0; e.windT = .3; e.patT = 99; bossCall(e, '순간이동!'); }
+  if (e.pat === 'stars') {   // 필살기 성좌 낙하: 별자리가 그려지고 별 하나하나에 빛기둥이 내리꽂힘
+    const A2 = S.arena, n = e.frenzied ? 13 : 9, lo = A2.h - 50, nodes = [];
+    for (let i = 0; i < n; i++) {   // 첫 별은 플레이어 자리, 나머지는 흩어짐 (서로 너무 붙지 않게)
+      let x, y, tries = 0;
+      do { x = i === 0 ? S.p.x : A2.x + rand(-lo, lo); y = i === 0 ? S.p.y : A2.y + rand(-lo, lo); }
+      while (i > 0 && tries++ < 20 && nodes.some(q => (q.x - x)**2 + (q.y - y)**2 < 150*150));
+      nodes.push({ x, y });
+    }
+    e.stars = nodes;
+    nodes.forEach((q, i) => (e.marks ||= []).push({ x:q.x, y:q.y, r:66, t:1.3 + i*.2, T:1.3 + i*.2, star:true, si:i }));
+    e.patT = 1.3 + n*.2 + .8;
+    bossCall(e, '필살 — 성좌 낙하!');
+    tone(1500, .9, 'sine', .07, 3000); tone(220, 1, 'triangle', .08, 110);
+  }
+  if (e.pat === 'eclipse') {   // 필살기 월식: 결투장 한가운데로 이동 → 어둠 + 달 + 마법진 → 꽃잎 탄막
+    const A2 = S.arena;
+    particles(e.x, e.y, 30, '#8a2be2', 260, .5, 4);
+    e.x = A2.x; e.y = A2.y; e.ecT = 0; e.ecBoom = 0; e.fireCd = 0;
+    e.patT = e.frenzied ? 7.2 : 6.2;
+    particles(e.x, e.y, 40, '#ffe9a8', 320, .6, 4);
+    S.flash = .6; S.flashC = '20,0,40'; S.shake = Math.max(S.shake, 14);
+    bossCall(e, '필살 — 월식!');
+    tone(110, 1.2, 'sawtooth', .12, 40); tone(880, 1, 'sine', .06, 1760);
+  }
   if (e.pat === 'wall')   {
     e.patT = e.enraged ? 3.8 : 2.8; e.wallSide = Math.floor(Math.random()*4);
     e.gapC = 0; bossCall(e, '탄막 벽!');
   }
+}
+function moonBurst(e, bs) {   // 달 폭발: 엇갈린 두 겹 고리 + 충격파 + 섬광
+  const n = e.frenzied ? 36 : 28, off = rand(0, TAU);
+  for (let k = 0; k < n; k++) {
+    const th = off + k*TAU/n;
+    S.ebullets.push({ x:e.x, y:e.y, vx:Math.cos(th)*210*bs, vy:Math.sin(th)*210*bs, r:10, dmg:e.dmg*.7, l:5, c:'#fff4c8' });
+    const t2 = th + Math.PI/n;
+    S.ebullets.push({ x:e.x, y:e.y, vx:Math.cos(t2)*140*bs, vy:Math.sin(t2)*140*bs, r:8, dmg:e.dmg*.6, l:6, c:'#ff6bd5' });
+  }
+  (e.fx ||= []).push({ kind:'moonwave', x:e.x, y:e.y, r:e.r, max:520, l:.7, ml:.7 },
+                     { kind:'moonwave', x:e.x, y:e.y, r:e.r, max:320, l:.45, ml:.45 });
+  particles(e.x, e.y, 50, '#ffe9a8', 380, .7, 5);
+  particles(e.x, e.y, 30, '#c27bff', 300, .6, 4);
+  S.flash = .5; S.flashC = '255,240,200'; S.shake = Math.max(S.shake, 18);
+  noise(.5, .14, 500); tone(70, .8, 'sawtooth', .14, 30); tone(1600, .5, 'sine', .07, 400);
 }
 function bossCall(e, txt) {
   popText(e.x, e.y - e.r - 30, txt, '#e0a6ff', true);
@@ -1185,15 +1255,52 @@ function bossCall(e, txt) {
 }
 // 운석 예고 원 · 레이저 판정 등 결투 패턴이 쓰는 값
 const METEOR_R = 72, METEOR_T = 1.05, LASER_W = 26;
+// 운석 비를 멈추는 패턴: 빈틈·안전 자리에 머물러야 하는 기술 (움직이라는 기술과 겹치면 피할 수가 없음)
+const NO_RAIN = new Set(['chase', 'meteor', 'wall', 'laser', 'eclipse', 'stars']);
 function finalAI(e, a, d2p, dt) {
+  if (S.cine && S.cine.k === 'intro' && S.t - S.cine.t0 < S.cine.d && e.kind === 'lord') {
+    if (Math.random() < .8) particles(e.x + rand(-80, 80), e.y + rand(-80, 80), 1, Math.random() < .5 ? '#c27bff' : '#ffe9a8', 40, .6, 3);
+    return;
+  }
   if (!e.enraged && e.hp < e.maxhp*0.5) {   // 체력 절반: 분노 (패턴이 빨라짐)
     e.enraged = true;
     S.flash = .5; S.flashC = '255,60,200'; S.shake = 16;
     popText(e.x, e.y - e.r - 24, e.nm + ' 분노!', '#ff6bd5', true);
     SFX.boss();
+    if (e.kind === 'lord') {   // 군주: 분노 순간 보랏빛 대폭발
+      (e.fx ||= []).push({ kind:'moonwave', x:e.x, y:e.y, r:e.r, max:700, l:.9, ml:.9 });
+      particles(e.x, e.y, 70, '#ff6bd5', 420, .8, 5); particles(e.x, e.y, 40, '#ffe9a8', 300, .7, 4);
+    }
   }
-  const bs = e.enraged ? 1.3 : 1;
+  if (e.ease.frenzy && !e.frenzied && e.hp < e.maxhp*0.25) {   // 체력 25%: 최후의 발악
+    e.frenzied = true;
+    S.flash = .8; S.flashC = '255,30,90'; S.shake = 26;
+    popText(e.x, e.y - e.r - 24, e.nm + ' — 최후의 발악!', '#ff3b6b', true);
+    SFX.boss(); setTimeout(SFX.boss, 300);
+    e.forceEc = true; if (e.pat === 'chase') e.patT = Math.min(e.patT, .4);
+    (e.fx ||= []).push({ kind:'moonwave', x:e.x, y:e.y, r:e.r, max:900, l:1.1, ml:1.1 },
+                       { kind:'moonwave', x:e.x, y:e.y, r:e.r, max:500, l:.7, ml:.7 });
+    particles(e.x, e.y, 90, '#ff2a5a', 480, .9, 5); particles(e.x, e.y, 50, '#fff0f0', 360, .7, 4);
+    noise(.8, .18, 200);
+  }
+  const bs = e.frenzied ? 1.5 : e.enraged ? 1.3 : 1;
   e.patT -= dt;
+  if (e.kind === 'lord' && e.frenzied && (e.boltCd = (e.boltCd || 0) - dt) <= 0) {   // 몸에서 붉은 번개가 튐
+    e.boltCd = .08;
+    e.bolts = [];
+    for (let b = 0; b < 3; b++) {
+      const th = rand(0, TAU), L = rand(110, 240), pts = [[0, 0]];
+      for (let st = 1; st <= 6; st++) { const d = L*st/6, j = rand(-18, 18); pts.push([Math.cos(th)*d - Math.sin(th)*j, Math.sin(th)*d + Math.cos(th)*j]); }
+      e.bolts.push(pts);
+    }
+    if (Math.random() < .08) noise(.12, .05, 1500);
+  }
+  if (e.ease.rain && e.enraged && !NO_RAIN.has(e.pat) && (e.rainCd = (e.rainCd || 0) - dt) <= 0) {
+    // 분노 뒤 운석 비: 다른 패턴을 피하는 동안에도 계속 움직여야 함
+    e.rainCd = e.frenzied ? .8 : 1.2;
+    const p = S.p, A2 = S.arena;
+    (e.marks ||= []).push({ x:clamp(p.x + rand(-30,30), A2.x - A2.h, A2.x + A2.h), y:clamp(p.y + rand(-30,30), A2.y - A2.h, A2.y + A2.h), t:METEOR_T, rain:true });
+  }
   if (e.pat === 'chase') {
     e.x += Math.cos(a)*e.spd*dt; e.y += Math.sin(a)*e.spd*dt;
   } else if (e.pat === 'spiral') {   // 나선 탄막
@@ -1294,13 +1401,19 @@ function finalAI(e, a, d2p, dt) {
         if (dx*c + dy*s > 0 && Math.abs(-dx*s + dy*c) < LASER_W/2 + S.p.r) { hurtPlayer(e.dmg*.4); break; }
       }
       if (Math.random() < .2) tone(90 + Math.random()*30, .06, 'sawtooth', .03);
+      if (e.kind === 'lord') for (let k = 0; k < e.lzN; k++) {
+        const th = e.lzAng + k*TAU/e.lzN, d = rand(e.r, ARENA_H*1.6);
+        particles(e.x + Math.cos(th)*d, e.y + Math.sin(th)*d, 1, Math.random() < .5 ? '#fff0ff' : '#ff6bd5', 90, .35, 3);
+      }
     }
     if (e.patT <= 0) e.lzT = e.lzN = 0;
   } else if (e.pat === 'blink') {    // 순간이동: 도착 지점 예고 → 나타나며 원형 탄막
     if (e.tpT > 0) {
       if ((e.tpT -= dt) <= 0) {
         particles(e.x, e.y, 20, '#8a2be2', 200, .4, 4);
+        if (e.kind === 'lord') (e.fx ||= []).push({ kind:'rift', x:e.x, y:e.y, r:e.r, l:.7, ml:.7 });
         e.x = e.tpX; e.y = e.tpY;
+        if (e.kind === 'lord') (e.fx ||= []).push({ kind:'rift', x:e.x, y:e.y, r:e.r, l:.5, ml:.5 }, { kind:'moonwave', x:e.x, y:e.y, r:e.r, max:220, l:.35, ml:.35 });
         const n = e.enraged ? 20 : 14;
         for (let k = 0; k < n; k++) shootAng(e, k*TAU/n + rand(0, .3), 175*bs);
         particles(e.x, e.y, 30, '#d79bff', 260, .5, 4);
@@ -1316,6 +1429,27 @@ function finalAI(e, a, d2p, dt) {
       e.tpY = clamp(S.p.y + Math.sin(ang)*190, A2.y - lo, A2.y + lo);
       e.tpT = e.enraged ? .55 : .75; e.windT = e.enraged ? .35 : .55;
     } else e.patT = 0;
+  } else if (e.pat === 'eclipse') {  // 월식: 모으기 1.2초 → 서로 반대로 도는 꽃잎 탄막 + 달 폭발
+    e.ecT += dt;
+    const CH = 1.2;
+    if (e.ecT < CH) {   // 기를 모음: 빛이 보스 주변에서 반짝임
+      const th = rand(0, TAU), d = rand(160, 300);
+      particles(e.x + Math.cos(th)*d, e.y + Math.sin(th)*d, 1, Math.random() < .5 ? '#ffe9a8' : '#c27bff', 60, .4, 3);
+    } else {
+      if ((e.fireCd -= dt) <= 0) {
+        e.fireCd = e.frenzied ? .15 : .2;
+        const arms = e.frenzied ? 5 : 4, sp = (135 + Math.sin(e.ecT*5)*35)*bs;
+        e.spAng += .19;
+        for (let k = 0; k < arms; k++) {
+          const a1 = e.spAng + k*TAU/arms, a2 = -e.spAng*1.3 + k*TAU/arms + .4;
+          S.ebullets.push({ x:e.x, y:e.y, vx:Math.cos(a1)*sp, vy:Math.sin(a1)*sp, r:8, dmg:e.dmg*.6, l:5, c:'#ffe9a8' });
+          S.ebullets.push({ x:e.x, y:e.y, vx:Math.cos(a2)*sp*.8, vy:Math.sin(a2)*sp*.8, r:8, dmg:e.dmg*.6, l:6, c:'#d070ff' });
+        }
+        if (Math.random() < .35) tone(1300 + Math.random()*400, .05, 'sine', .025, 900);
+      }
+      if (e.ecBoom === 0 && e.ecT > CH + 2.2) { e.ecBoom = 1; moonBurst(e, bs); }
+    }
+    if (e.patT <= 0) moonBurst(e, bs);
   } else if (e.pat === 'wall') {     // 탄막 벽: 한쪽 벽에서 빈틈 하나 있는 탄 줄이 밀려옴
     if ((e.fireCd -= dt) <= 0) {
       e.fireCd = (e.enraged ? .55 : .7) * (e.ease.wall || 1);
@@ -1338,6 +1472,17 @@ function finalAI(e, a, d2p, dt) {
       if ((m.t -= dt) > 0) continue;
       e.marks.splice(i, 1);
       const mr = m.r || METEOR_R;
+      if (m.star) {
+        (e.fx ||= []).push({ kind:'pillar', x:m.x, y:m.y, r:mr, l:.55, ml:.55 }, { kind:'moonwave', x:m.x, y:m.y, r:10, max:mr*1.8, l:.4, ml:.4 });
+        particles(m.x, m.y, 26, '#fff4c8', 360, .6, 4); particles(m.x, m.y, 14, '#7fd4ff', 260, .5, 3);
+        const nb = e.frenzied ? 10 : 8, off = rand(0, TAU);
+        for (let k = 0; k < nb; k++) { const th = off + k*TAU/nb;
+          S.ebullets.push({ x:m.x, y:m.y, vx:Math.cos(th)*120, vy:Math.sin(th)*120, r:7, dmg:e.dmg*.5, l:3, c:'#9fe6ff' }); }
+        S.shake = Math.max(S.shake, 10); S.flash = Math.max(S.flash, .25); S.flashC = '200,230,255';
+        tone(2000, .25, 'sine', .06, 500); noise(.2, .1, 900);
+        if (dist2(m, S.p) < (mr + S.p.r)**2) hurtPlayer(e.dmg*.75);
+        continue;
+      }
       particles(m.x, m.y, m.magma ? 8 : m.crack ? 10 : 18, m.magma ? '#ff5a1a' : '#ff8a3d', m.magma ? 300 : 240, .45, 4);
       if (e.kind === 'golem') {   // 강철 골렘: 폭발 섬광 · 그을린 자국 · 돌 파편
         particles(m.x, m.y, m.crack || m.magma ? 6 : 12, '#ffe08a', 340, .3, 3);
@@ -1375,7 +1520,7 @@ function finalAI(e, a, d2p, dt) {
   if (e.fx) for (let i = e.fx.length - 1; i >= 0; i--) {
     const f = e.fx[i];
     if ((f.l -= dt) <= 0) { e.fx.splice(i, 1); continue; }
-    if (f.kind === 'wave' || f.kind === 'boom') f.r = f.max * (1 - f.l/f.ml);
+    if (f.kind === 'wave' || f.kind === 'boom' || f.kind === 'moonwave') f.r = f.max * (1 - f.l/f.ml);
   }
   if (e.kind === 'golem') {   // 몸에서 불씨가 튐 (분노 시 더 많이) · 돌진 잔상
     if (Math.random() < (e.enraged ? .7 : .3)) particles(e.x + rand(-e.r, e.r)*.7, e.y + rand(-e.r, e.r)*.7 - (e.lift||0), 1, e.enraged ? '#ff4a2a' : '#ffb46b', 60, .6, 3);
@@ -1444,11 +1589,172 @@ function drawBossDeco(e, front) {
     ctx.beginPath(); ctx.arc(Math.cos(a)*r*.3, Math.sin(a)*r*.18, r*.14, 0, TAU); ctx.fill();
   }
 }
+// 심야의 군주 오라: 바닥 마법진 · 검은 불꽃 · 도는 초승달 · (최후의 발악) 붉은 번개와 핏빛 결투장
+function drawLordAura(e) {
+  const A2 = S.arena, ph = e.frenzied ? 2 : e.enraged ? 1 : 0;
+  const C1 = ['#a855f7', '#ff6bd5', '#ff2a5a'][ph], C2 = ['#e0a6ff', '#ffc2ee', '#ffd0d8'][ph];
+  {   // 결투장 전체를 덮는 자정의 시계 문양: 천천히 돌고, 바늘은 자정을 향해 감
+    ctx.save(); ctx.translate(A2.x, A2.y); ctx.globalAlpha = .16 + ph*.05; ctx.strokeStyle = C1; ctx.lineWidth = 3;
+    const RR = A2.h*.92;
+    ctx.beginPath(); ctx.arc(0, 0, RR, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, RR*.78, 0, TAU); ctx.stroke();
+    ctx.rotate(S.t*.08);
+    for (let i = 0; i < 12; i++) {   // 12시 눈금 + 로마 숫자 대신 긴 가시
+      const th = i*TAU/12;
+      ctx.beginPath(); ctx.moveTo(Math.cos(th)*RR*.8, Math.sin(th)*RR*.8); ctx.lineTo(Math.cos(th)*RR*(i % 3 ? .9 : .98), Math.sin(th)*RR*(i % 3 ? .9 : .98)); ctx.stroke();
+    }
+    ctx.rotate(-S.t*.08);
+    const hp = e.hp/e.maxhp, hand = -Math.PI/2 - hp*TAU;   // 체력이 줄수록 바늘이 12시(자정)로 다가감
+    ctx.lineWidth = 6; ctx.globalAlpha = .3 + ph*.08;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(hand)*RR*.7, Math.sin(hand)*RR*.7); ctx.stroke();
+    ctx.restore();
+  }
+  if (ph === 2) {   // 결투장이 핏빛으로 맥동
+    ctx.fillStyle = `rgba(160,0,30,${.1 + .07*Math.sin(S.t*6)})`;
+    ctx.fillRect(A2.x - A2.h, A2.y - A2.h, A2.h*2, A2.h*2);
+  }
+  ctx.save(); ctx.translate(e.x, e.y);
+  // 바닥 마법진 (납작한 타원)
+  ctx.save(); ctx.scale(1, .45); ctx.rotate(S.t*.8);
+  ctx.strokeStyle = C1; ctx.globalAlpha = .55; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, e.r*2.2, e.r*1.7, 0, TAU); ctx.stroke();
+  ctx.setLineDash([12, 10]); ctx.beginPath(); ctx.arc(0, e.r*2.2, e.r*1.35, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+  ctx.restore();
+  ctx.globalCompositeOperation = 'lighter';
+  // 검은 불꽃 혀 (몸 둘레에서 일렁임)
+  const nF = 16, fl = 1 + ph*.25;
+  for (let i = 0; i < nF; i++) {
+    const th = i*TAU/nF + S.t*.6, L = e.r*(1.35 + .3*Math.sin(S.t*7 + i*1.7))*fl, w = .17;
+    ctx.fillStyle = i % 2 ? C1 : C2; ctx.globalAlpha = .28 + .12*Math.sin(S.t*9 + i);
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(th - w)*e.r*.9, Math.sin(th - w)*e.r*.9);
+    ctx.quadraticCurveTo(Math.cos(th)*L*.8, Math.sin(th)*L*.8 - 8, Math.cos(th + .08*Math.sin(S.t*5 + i))*L, Math.sin(th)*L - 10);
+    ctx.lineTo(Math.cos(th + w)*e.r*.9, Math.sin(th + w)*e.r*.9);
+    ctx.fill();
+  }
+  // 몸을 감싸는 빛무리
+  const g = ctx.createRadialGradient(0, 0, e.r*.6, 0, 0, e.r*2.1);
+  g.addColorStop(0, C1); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = .35 + .1*Math.sin(S.t*4); ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, e.r*2.1, 0, TAU); ctx.fill();
+  // 도는 초승달 (분노할수록 늘어남)
+  const nM = 3 + ph, mr = e.r*.32;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < nM; i++) {
+    const th = S.t*1.4 + i*TAU/nM, ox = Math.cos(th)*e.r*1.95, oy = Math.sin(th)*e.r*1.25 - e.r*.2;
+    ctx.globalAlpha = .95; ctx.shadowBlur = 14; ctx.shadowColor = '#ffe9a8';
+    ctx.strokeStyle = '#ffe9a8'; ctx.lineWidth = mr*.55;
+    ctx.beginPath(); ctx.arc(ox, oy, mr, th + .6, th + .6 + Math.PI*1.1); ctx.stroke();
+    ctx.shadowBlur = 0;
+    if (Math.random() < .3) particles(e.x + ox, e.y + oy, 1, '#ffe9a8', 30, .4, 2);
+  }
+  ctx.lineCap = 'butt';
+  // 최후의 발악: 붉은 번개
+  if (ph === 2 && e.bolts) for (const pts of e.bolts) {
+    for (const [lw, col, al] of [[7, '#ff2a5a', .5], [2.5, '#fff0f4', 1]]) {
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.globalAlpha = al;
+      ctx.beginPath(); pts.forEach(([x, y], j) => j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.restore();
+}
+// 화면 연출: 군주 등장 (검은 띠 + 이름) · 군주 처치 (빛살 + 문구)
+function drawCine() {
+  const c = S.cine; if (!c) return;
+  const t = S.t - c.t0; if (t > c.d) { S.cine = null; return; }
+  const inK = clamp(t/.35, 0, 1), outK = clamp((c.d - t)/.45, 0, 1), k = Math.min(inK, outK);
+  ctx.save();
+  if (c.k === 'intro') {
+    const bar = H*.13*k;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, bar); ctx.fillRect(0, H - bar, W, bar);
+    const tk = clamp((t - .4)/.5, 0, 1)*outK;
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = tk; ctx.shadowBlur = 30; ctx.shadowColor = '#c27bff';
+    ctx.fillStyle = '#f3e3ff'; ctx.font = `bold ${Math.round(56 + (1 - tk)*30)}px Malgun Gothic, sans-serif`;
+    ctx.fillText(c.nm, W/2, H*.42);
+    ctx.shadowBlur = 0; ctx.fillStyle = '#ffd36b'; ctx.font = 'bold 18px Malgun Gothic, sans-serif';
+    ctx.fillText('— 밤을 지배하는 자 · 최종 보스 —', W/2, H*.42 + 40);
+    ctx.strokeStyle = `rgba(255,211,107,${tk})`; ctx.lineWidth = 2;   // 이름 양옆 장식선
+    const lw = 220*tk; ctx.beginPath(); ctx.moveTo(W/2 - 60 - lw, H*.42 + 33); ctx.lineTo(W/2 - 200, H*.42 + 33);
+    ctx.moveTo(W/2 + 200, H*.42 + 33); ctx.lineTo(W/2 + 60 + lw, H*.42 + 33); ctx.stroke();
+  } else {   // 처치: 화면 가운데서 빛살이 뻗어 나감
+    ctx.translate(W/2, H/2); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 24; i++) {
+      const th = i*TAU/24 + t*.5, L = Math.max(W, H)*(.4 + t*.5);
+      ctx.fillStyle = i % 2 ? `rgba(255,235,180,${.35*k})` : `rgba(200,120,255,${.3*k})`;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(th - .04)*L, Math.sin(th - .04)*L); ctx.lineTo(Math.cos(th + .04)*L, Math.sin(th + .04)*L); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over'; ctx.textAlign = 'center';
+    ctx.globalAlpha = clamp((t - .5)/.4, 0, 1)*outK; ctx.shadowBlur = 30; ctx.shadowColor = '#ffe9a8';
+    ctx.fillStyle = '#fff4d6'; ctx.font = 'bold 50px Malgun Gothic, sans-serif';
+    ctx.fillText('새벽이 밝아온다', 0, -H*.08);
+  }
+  ctx.restore();
+}
+// 필살기 월식 그리기: 결투장이 어두워지고 보스 뒤로 검은 달 + 빛 고리 + 회전하는 마법진
+function drawEclipse(e) {
+  const A2 = S.arena, t = e.ecT || 0, k = clamp(t/1.2, 0, 1), endK = clamp(e.patT/.5, 0, 1), vis = k*endK;
+  ctx.fillStyle = `rgba(6,0,18,${.6*vis})`;
+  ctx.fillRect(A2.x - A2.h, A2.y - A2.h, A2.h*2, A2.h*2);
+  for (let i = 0; i < 40; i++) {   // 어둠 속 별빛
+    const sx = A2.x - A2.h + ((i*137.5) % (A2.h*2)), sy = A2.y - A2.h + ((i*89.3 + i*i*7) % (A2.h*2));
+    ctx.fillStyle = `rgba(255,240,210,${vis*(.3 + .5*Math.abs(Math.sin(S.t*2 + i)))})`;
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+  for (let i = 0; i < 7; i++) {   // 어둠을 가르는 유성
+    const per = 1.6 + i*.23, ph = ((S.t + i*.71) % per)/per;
+    const sx = A2.x - A2.h + ((i*263) % (A2.h*2)) + ph*A2.h*1.2, sy = A2.y - A2.h + ph*A2.h*1.6;
+    const gr = ctx.createLinearGradient(sx, sy, sx - 90, sy - 120);
+    gr.addColorStop(0, `rgba(255,245,220,${.9*vis*(1 - ph)})`); gr.addColorStop(1, 'rgba(200,120,255,0)');
+    ctx.strokeStyle = gr; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - 90, sy - 120); ctx.stroke(); ctx.lineCap = 'butt';
+  }
+  ctx.save(); ctx.translate(e.x, e.y);
+  const R = e.r*2.1*(.6 + .4*k);
+  const g = ctx.createRadialGradient(0, 0, R*.8, 0, 0, R*2.2);   // 코로나 (달 뒤의 빛)
+  g.addColorStop(0, `rgba(255,235,180,${.85*vis})`); g.addColorStop(.35, `rgba(220,120,255,${.4*vis})`); g.addColorStop(1, 'rgba(120,40,200,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R*2.2, 0, TAU); ctx.fill();
+  ctx.globalAlpha = .35*vis;   // 빛줄기
+  for (let i = 0; i < 12; i++) {
+    const th = S.t*.4 + i*TAU/12, L = R*(2.4 + .5*Math.sin(S.t*3 + i));
+    ctx.fillStyle = i % 2 ? '#ffe9a8' : '#d79bff';
+    ctx.beginPath(); ctx.moveTo(Math.cos(th - .05)*R, Math.sin(th - .05)*R); ctx.lineTo(Math.cos(th)*L, Math.sin(th)*L); ctx.lineTo(Math.cos(th + .05)*R, Math.sin(th + .05)*R); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 30; ctx.shadowColor = '#ffe9a8';   // 검은 달 + 빛 테두리
+  ctx.fillStyle = `rgba(8,2,16,${vis})`; ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill();
+  ctx.strokeStyle = `rgba(255,240,200,${vis})`; ctx.lineWidth = 4; ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = .8*vis;   // 회전하는 마법진 (두 겹 고리 + 룬 + 육망성)
+  for (const [rr, sp, n, col] of [[R*1.55, .7, 16, '#c27bff'], [R*2.0, -.45, 24, '#ffe9a8']]) {
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, rr - 10, 0, TAU); ctx.stroke();
+    ctx.save(); ctx.rotate(S.t*sp);
+    for (let i = 0; i < n; i++) {
+      ctx.rotate(TAU/n);
+      ctx.beginPath(); ctx.moveTo(rr - 8, -4); ctx.lineTo(rr - 2, 0); ctx.lineTo(rr - 8, 4); ctx.moveTo(rr - 5, -5); ctx.lineTo(rr - 5, 5); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.save(); ctx.rotate(-S.t*.9); ctx.strokeStyle = '#ff6bd5'; ctx.lineWidth = 2;
+  for (let tri = 0; tri < 2; tri++) {
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) { const th = i*TAU/3 + tri*Math.PI; ctx.lineTo(Math.cos(th)*R*1.45, Math.sin(th)*R*1.45); }
+    ctx.closePath(); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
 // 결투 패턴 예고 그리기 (운석 원 · 레이저 · 순간이동 도착 지점)
 function drawBossFx() {
   const e = S.arena && S.boss && S.boss.final ? S.boss : null;
   if (!e) return;
   const golem = e.kind === 'golem';
+  if (e.pat === 'eclipse') drawEclipse(e);
+  if (e.kind === 'lord') drawLordAura(e);
   for (const f of e.fx || []) if (f.kind === 'scorch') {   // 그을린 땅 + 식어가는 용암
     const k = f.l/f.ml;
     ctx.fillStyle = `rgba(20,10,6,${.55*k})`;
@@ -1456,8 +1762,33 @@ function drawBossFx() {
     ctx.fillStyle = `rgba(255,90,30,${.35*k*k})`;
     ctx.beginPath(); ctx.arc(f.x, f.y, f.r*.55, 0, TAU); ctx.fill();
   }
+  if (e.stars && e.marks && e.marks.some(m => m.star)) {   // 별자리 선 (아직 안 떨어진 별끼리 이음)
+    const live = e.marks.filter(m => m.star).sort((a, b) => a.si - b.si);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(160,220,255,.55)'; ctx.lineWidth = 2; ctx.setLineDash([6, 8]); ctx.lineDashOffset = -S.t*40;
+    ctx.beginPath(); live.forEach((m, i) => i ? ctx.lineTo(m.x, m.y) : ctx.moveTo(m.x, m.y)); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
   for (const m of e.marks || []) {
     const T = m.T || METEOR_T, mr = m.r || METEOR_R, k = 1 - m.t/T;
+    if (m.star) {   // 별 표식: 빛나는 원 + 도는 오각별, 떨어지기 직전엔 하늘에서 빛줄기가 내려옴
+      const kk = clamp(1 - m.t/1.3, 0, 1);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `rgba(120,200,255,${.08 + kk*.25})`; ctx.beginPath(); ctx.arc(m.x, m.y, mr*kk, 0, TAU); ctx.fill();
+      ctx.strokeStyle = `rgba(200,240,255,${.5 + kk*.5})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(m.x, m.y, mr, 0, TAU); ctx.stroke();
+      ctx.translate(m.x, m.y); ctx.rotate(S.t*2 + m.si);
+      ctx.fillStyle = `rgba(255,250,220,${.5 + kk*.5})`; ctx.beginPath();
+      for (let p = 0; p < 10; p++) { const rr = p % 2 ? 7 : 17 + kk*6, th = p*Math.PI/5; ctx.lineTo(Math.cos(th)*rr, Math.sin(th)*rr); }
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      if (m.t < .35) {   // 내려오는 빛줄기
+        const a = 1 - m.t/.35;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = `rgba(180,230,255,${.5*a})`; ctx.fillRect(m.x - 6 - a*10, m.y - 700, 12 + a*20, 700);
+        ctx.restore();
+      }
+      continue;
+    }
     if (m.magma) {   // 용암 칸: 차례가 되면 바닥이 달아오르고 부글부글 끓음
       if (m.t > T - m.show) continue;   // 아직 차례가 아님
       const kk = clamp(1 - m.t/1.25, 0, 1);
@@ -1532,6 +1863,28 @@ function drawBossFx() {
       ctx.beginPath(); ctx.arc(f.x, f.y, f.r*.6, 0, TAU); ctx.fill();
       ctx.strokeStyle = `rgba(255,120,40,${.9*k})`; ctx.lineWidth = 5*k + 1;
       ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.stroke();
+    } else if (f.kind === 'moonwave') {   // 달 폭발 충격파
+      ctx.shadowBlur = 25; ctx.shadowColor = '#ffe9a8';
+      ctx.strokeStyle = `rgba(255,240,200,${.9*k})`; ctx.lineWidth = 3 + 18*k;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = `rgba(200,110,255,${.7*k})`; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r*.85, 0, TAU); ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (f.kind === 'pillar') {   // 하늘에서 내리꽂힌 빛기둥
+      const w = f.r*(.5 + .7*k);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const gg = ctx.createLinearGradient(f.x - w, 0, f.x + w, 0);
+      gg.addColorStop(0, 'rgba(120,200,255,0)'); gg.addColorStop(.5, `rgba(230,245,255,${.95*k})`); gg.addColorStop(1, 'rgba(120,200,255,0)');
+      ctx.fillStyle = gg; ctx.fillRect(f.x - w, f.y - 900, w*2, 900 + f.r*.3);
+      ctx.fillStyle = `rgba(220,240,255,${.45*k})`; ctx.beginPath(); ctx.ellipse(f.x, f.y, w*1.1, w*.4, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = `rgba(255,255,255,${.7*k})`; ctx.beginPath(); ctx.ellipse(f.x, f.y, w*.45, w*.16, 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    } else if (f.kind === 'rift') {   // 공간 균열: 세로로 찢어진 틈이 빛나다 닫힘
+      const w = f.r*.55*k, hh = f.r*2.2;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `rgba(170,60,255,${.5*k})`; ctx.beginPath(); ctx.ellipse(f.x, f.y, w*2.2, hh*1.15, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = `rgba(255,200,255,${.9*k})`; ctx.beginPath(); ctx.ellipse(f.x, f.y, w*.6, hh, 0, 0, TAU); ctx.fill();
+      ctx.restore();
     } else if (f.kind === 'ghost') {   // 돌진 잔상
       ctx.fillStyle = `rgba(255,120,50,${.3*k})`;
       ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill();
@@ -1839,6 +2192,17 @@ function killEnemy(e) {
   if (e.final) {   // 최종 보스 처치 = 게임 클리어: 남은 적·탄 정리, 코인을 모은 뒤 클리어 화면
     // 결투장은 이번 프레임이 끝난 뒤 닫음 (보스 행동 도중 반격 충격파로 죽어도 S.arena를 쓰는 코드가 터지지 않게)
     S.arenaClose = true; S.finalDone = true; S.clearT = 2.5;
+    if (e.kind === 'lord') {   // 심야의 군주 처치: 연쇄 폭발 → 빛살 → 불꽃놀이
+      S.clearT = 4.2; S.cine = { k:'end', t0:S.t, d:3.6 };
+      S.flash = 1; S.flashC = '255,245,220'; S.shake = 34; SFX.boss();
+      const ex = e.x, ey = e.y, cols = ['#ffe9a8', '#c27bff', '#ff6bd5', '#7fd4ff', '#ffffff'];
+      for (let i = 0; i < 14; i++) setTimeout(() => {
+        const x = ex + rand(-260, 260)*(i/14), y = ey + rand(-200, 200)*(i/14), c = cols[i % cols.length];
+        particles(x, y, 45, c, 420, .9, 5); particles(x, y, 20, '#ffffff', 240, .5, 3);
+        S.shake = Math.max(S.shake, 14); noise(.3, .12, 300 + i*60); tone(1200 - i*50, .3, 'sine', .05, 300);
+      }, i*170);
+      particles(ex, ey, 160, '#ffe9a8', 560, 1.2, 6); particles(ex, ey, 100, '#c27bff', 480, 1, 5);
+    }
     for (let k = 0; k < 40; k++) dropCoin(e.x + rand(-90,90), e.y + rand(-90,90));
     for (const g of S.gems) g.vac = true;
     for (const o of S.enemies) particles(o.x, o.y, 6, o.c, 120, .4, 3);
@@ -2797,8 +3161,17 @@ function render() {
   ctx.globalAlpha = 1;
 
   // 적 탄: 맨 위에, 검은 테두리 + 흰 심지로 어떤 이펙트 위에서도 보이게
+  const lordGlow = S.arena && S.boss && S.boss.kind === 'lord';
   for (const b of S.ebullets) {
     if (!onScreen(b, b.r + 10)) continue;
+    if (lordGlow) {   // 심야의 군주 탄: 반짝이는 별빛 후광 + 빛 꼬리
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = .35; ctx.strokeStyle = b.c; ctx.lineWidth = b.r*1.3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx*.09, b.y - b.vy*.09); ctx.stroke(); ctx.lineCap = 'butt';
+      ctx.globalAlpha = .22 + .12*Math.sin(S.t*12 + b.x*.05); ctx.fillStyle = b.c;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 13, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
     ctx.globalAlpha = .3; ctx.fillStyle = b.c;
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 7, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
@@ -2843,6 +3216,7 @@ function render() {
     ctx.restore();
   }
 
+  drawCine();
   if (S.flash > 0) {
     ctx.fillStyle = `rgba(${S.flashC},${S.flash*.35})`;
     ctx.fillRect(0, 0, W, H);
