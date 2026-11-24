@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>마크 정품 인증소</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    padding: 28px 16px 48px;
+    background: linear-gradient(to top, #0d1a0d 0%, #071007 55%, #000 100%);
+    color: #eaf5e6;
+    font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+    display: flex; flex-direction: column; align-items: center; gap: 18px;
+  }
+  a.back { align-self: flex-start; color: #7fa37a; font-size: 13px; text-decoration: none; }
+  h1 { font-size: 30px; letter-spacing: 2px; color: #7dff5a; text-shadow: 0 0 16px rgba(125,255,90,.45); text-align: center; }
+  .sub { font-size: 13px; color: #8fae8a; margin-top: -10px; text-align: center; }
+  .panel {
+    width: 100%; max-width: 520px;
+    background: rgba(0,0,0,.5);
+    border: 2px solid #2f4a2b; border-radius: 14px;
+    padding: 18px;
+  }
+  .panel h2 { font-size: 16px; color: #b6ff9c; margin-bottom: 10px; }
+  .row { display: flex; gap: 8px; }
+  input {
+    flex: 1; min-width: 0;
+    font-size: 17px; padding: 12px 14px;
+    background: #0b140a; color: #fff;
+    border: 2px solid #3d5e38; border-radius: 10px; outline: none;
+  }
+  input:focus { border-color: #7dff5a; }
+  button {
+    font-size: 15px; font-weight: bold; padding: 12px 16px;
+    background: #4caf3a; color: #061005; border: none; border-radius: 10px; cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover { background: #63c94f; }
+  button:disabled { background: #2d4a28; color: #6d8a68; cursor: default; }
+  button.ghost { background: transparent; color: #9fc79a; border: 2px solid #3d5e38; }
+  button.ghost:hover { border-color: #7dff5a; color: #fff; }
+  .hint { font-size: 12px; color: #7f9c7a; margin-top: 8px; line-height: 1.6; }
+  .hidden { display: none !important; }
+
+  .result { display: flex; gap: 16px; align-items: center; }
+  .result img.body { width: 90px; image-rendering: pixelated; flex-shrink: 0; }
+  .stamp {
+    display: inline-block; font-size: 20px; font-weight: 900; letter-spacing: 1px;
+    padding: 6px 12px; border-radius: 8px; border: 3px solid currentColor;
+    transform: rotate(-4deg); margin-bottom: 8px;
+  }
+  .ok   { color: #7dff5a; }
+  .bad  { color: #ff5a5a; }
+  .warn { color: #ffcc33; }
+  .info { font-size: 13px; color: #b9d3b4; line-height: 1.7; word-break: break-all; }
+  .info b { color: #fff; }
+  .note {
+    margin-top: 12px; font-size: 13px; line-height: 1.6;
+    background: rgba(255,204,51,.08); border: 1px solid rgba(255,204,51,.35);
+    color: #ffe08a; border-radius: 10px; padding: 10px 12px;
+  }
+
+  ol.steps { margin: 4px 0 12px 20px; font-size: 14px; line-height: 1.8; color: #d4e8cf; }
+  .compare { display: flex; justify-content: center; gap: 18px; align-items: center; margin: 10px 0; }
+  .compare figure { text-align: center; font-size: 12px; color: #8fae8a; }
+  .compare img { width: 96px; height: 96px; image-rendering: pixelated; background: #1a2a18; border-radius: 8px; display: block; margin-bottom: 4px; }
+  .arrow { font-size: 26px; color: #4caf3a; }
+  .status { font-size: 14px; text-align: center; margin: 8px 0; line-height: 1.6; }
+  .btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+  ul.tips { margin-left: 18px; font-size: 13px; line-height: 1.8; color: #c6dcc1; }
+  footer { font-size: 11px; color: #4f6a4b; text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+  <a class="back" href="./index.html">← 메뉴로</a>
+  <h1>⛏️ 마크 정품 인증소</h1>
+  <p class="sub">"나 마크 샀어" 진짜인지 확인해 보자</p>
+
+  <!-- 1단계: 이름 조회 -->
+  <div class="panel">
+    <h2>1단계 · 닉네임 조회</h2>
+    <div class="row">
+      <input id="name" placeholder="마크 닉네임 입력" maxlength="16" autocomplete="off" spellcheck="false">
+      <button id="lookup">조회</button>
+    </div>
+    <p class="hint">자바 에디션(PC) 정품 계정만 조회돼요. 닉네임은 3~16자, 영어·숫자·_ 만 가능해요.</p>
+  </div>
+
+  <div class="panel hidden" id="resultPanel">
+    <div id="result"></div>
+  </div>
+
+  <!-- 2단계: 주인 인증 미션 -->
+  <div class="panel hidden" id="missionPanel">
+    <h2>2단계 · 진짜 주인 인증 미션</h2>
+    <div id="missionIntro">
+      <p class="info">이름이 있다고 끝이 아니에요. 남의 닉네임을 댈 수도 있거든요.<br>
+      <b>스킨은 계정 주인만 바꿀 수 있어서</b>, 스킨을 바꾸라고 시키면 진짜 주인인지 알 수 있어요.</p>
+      <ol class="steps">
+        <li>아래 <b>미션 시작</b>을 눌러 지금 스킨을 저장해요.</li>
+        <li>친구한테 <b>지금 바로 스킨을 다른 걸로 바꾸라고</b> 해요.<br>(마크 런처 → 스킨, 또는 minecraft.net)</li>
+        <li>바꿨다고 하면 <b>다시 확인</b>을 눌러요.</li>
+      </ol>
+      <div class="btns"><button id="startMission">미션 시작</button></div>
+    </div>
+    <div id="missionLive" class="hidden">
+      <div class="compare">
+        <figure><img id="skinBefore" alt="원래 스킨">원래 스킨</figure>
+        <span class="arrow">→</span>
+        <figure><img id="skinNow" alt="지금 스킨">지금 스킨</figure>
+      </div>
+      <div class="status" id="missionStatus"></div>
+      <div class="btns">
+        <button id="recheck">다시 확인</button>
+        <button class="ghost" id="cancelMission">미션 취소</button>
+      </div>
+      <p class="hint" id="cacheHint"></p>
+    </div>
+  </div>
+
+  <!-- 팁 -->
+  <div class="panel">
+    <h2>💡 더 확실하게 확인하는 법</h2>
+    <ul class="tips">
+      <li><b>정품 서버에 같이 들어가기</b>: Hypixel 같은 큰 서버는 정품만 들어갈 수 있어요. "들어와 봐" 하면 끝!</li>
+      <li><b>런처 화면 영상 찍기</b>: 사진은 남의 것을 보낼 수 있으니, 지금 시간이 보이게 영상을 찍어 달라고 해요.</li>
+      <li><b>모바일·콘솔(베드락)</b>이라면 이 앱으로는 조회가 안 돼요. Realms나 친구 추가로 확인해요.</li>
+    </ul>
+  </div>
+
+  <footer>Mojang 공개 정보(minetools · playerdb)로 조회해요.<br>입력한 닉네임은 이 기기에만 저장돼요.</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const NAME_RE = /^[A-Za-z0-9_]{3,16}$/;
+const MISSION_KEY = 'mcCheckMission';
+let current = null; // { id, name, skin }
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function dashed(id) { return id.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5'); }
+function httpsUrl(u) { return u ? u.replace(/^http:/, 'https:') : null; }
+
+async function getJson(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok && r.status !== 404 && r.status !== 400) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+// 이름 → { id, name, skin, cachedUntil } / null(없음). 네트워크 실패 시 throw
+async function fetchProfileByName(name) {
+  try {
+    const u = await getJson('https://api.minetools.eu/uuid/' + encodeURIComponent(name));
+    if (u.status !== 'OK' || !u.id) return null;
+    return await fetchProfileById(u.id);
+  } catch (e) {
+    // 예비: playerdb
+    const p = await getJson('https://playerdb.co/api/player/minecraft/' + encodeURIComponent(name));
+    if (!p.success || !p.data || !p.data.player) return null;
+    const pl = p.data.player;
+    return { id: pl.raw_id, name: pl.username, skin: httpsUrl(pl.skin_texture), cachedUntil: null };
+  }
+}
+
+async function fetchProfileById(id) {
+  const p = await getJson('https://api.minetools.eu/profile/' + id);
+  if (p.status === 'ERR' || !p.decoded) throw new Error('profile');
+  const tex = p.decoded.textures || {};
+  const skin = tex.SKIN ? httpsUrl(tex.SKIN.url) : null;
+  const cachedUntil = p.raw && p.raw.cache ? p.raw.cache.cached_until * 1000 : null;
+  return { id: p.decoded.profileId, name: p.decoded.profileName, skin, cachedUntil };
+}
+
+function showResult(html) {
+  $('resultPanel').classList.remove('hidden');
+  $('result').innerHTML = html;
+}
+
+async function lookup() {
+  const name = $('name').value.trim();
+  $('missionPanel').classList.add('hidden');
+  if (!NAME_RE.test(name)) {
+    showResult(`<div class="stamp bad">❌ 불가능한 닉네임</div>
+      <p class="info">마크 닉네임은 <b>3~16자</b>, <b>영어·숫자·_</b>만 쓸 수 있어요.<br>이런 닉네임은 정품 계정으로 만들 수 없어요.</p>`);
+    return;
+  }
+  $('lookup').disabled = true;
+  showResult('<p class="info">조회 중...</p>');
+  try {
+    const prof = await fetchProfileByName(name);
+    if (!prof) {
+      current = null;
+      showResult(`<div class="stamp bad">❌ 정품 계정 없음</div>
+        <p class="info"><b>${esc(name)}</b> 이름의 자바 정품 계정이 없어요.</p>
+        <div class="note">철자를 다시 확인해 보세요. 닉네임을 최근에 바꿨거나, 모바일(베드락) 버전이면 여기서 안 나와요.
+        그래도 없으면… <b>거짓말일 가능성이 높아요 🤨</b></div>`);
+      return;
+    }
+    current = prof;
+    const sameCase = prof.name === name;
+    showResult(`<div class="result">
+        <img class="body" src="https://mc-heads.net/body/${prof.id}/180" alt="스킨">
+        <div>
+          <div class="stamp ok">✅ 정품 계정 있음</div>
+          <p class="info">닉네임: <b>${esc(prof.name)}</b>${sameCase ? '' : ' <span class="warn">(대소문자 다름)</span>'}<br>
+          UUID: ${dashed(prof.id)}</p>
+        </div>
+      </div>
+      <div class="note">⚠️ 이 이름의 정품 계정이 <b>있다</b>는 것까지만 확인됐어요.
+      친구가 <b>남의 닉네임</b>을 댔을 수도 있으니 2단계 미션으로 진짜 주인인지 확인해 보세요!</div>`);
+    showMission();
+  } catch (e) {
+    showResult(`<div class="stamp warn">⚠️ 조회 실패</div>
+      <p class="info">서버에 연결하지 못했어요. 인터넷 연결을 확인하고 잠시 뒤 다시 해 보세요.</p>`);
+  } finally {
+    $('lookup').disabled = false;
+  }
+}
+
+function loadMission() { try { return JSON.parse(localStorage.getItem(MISSION_KEY)); } catch { return null; } }
+
+function showMission() {
+  $('missionPanel').classList.remove('hidden');
+  const m = loadMission();
+  if (m && current && m.id === current.id) {
+    $('missionIntro').classList.add('hidden');
+    $('missionLive').classList.remove('hidden');
+    $('skinBefore').src = m.skin || '';
+    $('skinNow').src = current.skin || '';
+    judge(m, current);
+  } else {
+    $('missionIntro').classList.remove('hidden');
+    $('missionLive').classList.add('hidden');
+  }
+}
+
+function minutesAgo(t) { return Math.max(0, Math.round((Date.now() - t) / 60000)); }
+
+function judge(m, prof) {
+  const st = $('missionStatus');
+  if (prof.skin !== m.skin) {
+    st.innerHTML = `<div class="stamp ok">🏆 정품 인증 완료!</div><br>스킨이 바뀌었어요. <b>${esc(prof.name)}</b>의 진짜 주인이 맞아요.<br>
+      <span class="hint">(바뀐 스킨이 친구가 말한 모양이랑 같은지도 물어보면 완벽해요)</span>`;
+  } else {
+    const ago = minutesAgo(m.startedAt);
+    st.innerHTML = `<span class="warn">아직 스킨이 그대로예요.</span> (미션 시작 ${ago}분 전)` +
+      (ago >= 40 ? `<br><div class="stamp bad" style="margin-top:8px">🤥 의심됨</div><br>40분이 지나도 안 바뀌었어요. 진짜 주인이 아닐 수 있어요!` : '');
+  }
+  const hint = $('cacheHint');
+  if (prof.cachedUntil && prof.cachedUntil > Date.now()) {
+    const left = Math.ceil((prof.cachedUntil - Date.now()) / 60000);
+    hint.textContent = `조회 서버가 정보를 잠깐 저장해 둬서, 바꾼 스킨이 보이기까지 최대 30분 걸려요. 새 정보는 약 ${left}분 뒤에 들어와요.`;
+  } else {
+    hint.textContent = '조회 서버가 정보를 잠깐 저장해 둬서, 바꾼 스킨이 보이기까지 최대 30분 걸릴 수 있어요.';
+  }
+}
+
+$('startMission').onclick = () => {
+  if (!current) return;
+  localStorage.setItem(MISSION_KEY, JSON.stringify({ id: current.id, name: current.name, skin: current.skin, startedAt: Date.now() }));
+  showMission();
+};
+
+$('recheck').onclick = async () => {
+  const m = loadMission();
+  if (!m) return;
+  $('recheck').disabled = true;
+  $('missionStatus').textContent = '확인 중...';
+  try {
+    const prof = await fetchProfileById(m.id);
+    current = prof;
+    $('skinNow').src = prof.skin || '';
+    judge(m, prof);
+  } catch (e) {
+    $('missionStatus').innerHTML = '<span class="warn">확인 실패. 잠시 뒤 다시 눌러 주세요.</span>';
+  } finally {
+    $('recheck').disabled = false;
+  }
+};
+
+$('cancelMission').onclick = () => {
+  localStorage.removeItem(MISSION_KEY);
+  showMission();
+};
+
+$('lookup').onclick = lookup;
+$('name').addEventListener('keydown', e => { if (e.key === 'Enter') lookup(); });
+
+// 진행 중인 미션이 있으면 이어서
+(function resume() {
+  const m = loadMission();
+  if (m && m.name) { $('name').value = m.name; lookup(); }
+})();
+</script>
+</body>
+</html>
