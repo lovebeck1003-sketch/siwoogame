@@ -442,10 +442,14 @@ const OPEN_TEST = !MAX_TEST && !BOSS_TEST && new URLSearchParams(location.search
 if (OPEN_TEST) document.title = 'SURVIVOR (단계 테스트)';
 const GEAR_Q = new URLSearchParams(location.search).get('gear');
 const GEAR5 = (BOSS_TEST || OPEN_TEST) && GEAR_Q === '5';   // ?boss=N&gear=5 · ?open=1&gear=5 : 5단계에 도착할 때쯤 모이는 장비 (1~4단계 2판씩 ≈ 5000골드)
-const GEAR_TEST = (BOSS_TEST && (GEAR_Q === '1' || GEAR5))   // ?boss=N&gear=1 : 3단계쯤의 보통 장비로 보스 테스트
+const GEARMAX = (BOSS_TEST || OPEN_TEST) && GEAR_Q === 'max';   // ?open=1&gear=max · ?boss=N&gear=max : 상점 훈련 전부 MAX + 장비 전부 보유 (칸마다 최고 장비 장착) · 게임 안 레벨은 그대로
+// ?show=1 (보스 테스트·만렙 테스트와 함께) : 보스 쇼 — 보스 고유 색은 그대로 두고 디테일 추가 (마법진·룬·빛줄기·탄 반짝임·불꽃놀이) · 화려한 기술 위주 · 보스 체력 2배 · 결투 중엔 안 맞음 (구경용)
+const SHOW = (BOSS_TEST || OPEN_TEST || MAX_TEST) && new URLSearchParams(location.search).has('show');
+if (SHOW) document.title += ' ✨보스 쇼';
+const GEAR_TEST = (BOSS_TEST && (GEAR_Q === '1' || GEAR5 || GEARMAX))   // ?boss=N&gear=1 : 3단계쯤의 보통 장비로 보스 테스트
                || (OPEN_TEST && new URLSearchParams(location.search).get('gear') !== '0');
-if (GEAR_TEST) document.title += ' + 장비';
-const SAVE_KEY = MAX_TEST ? 'survivor_save_maxtest' : OPEN_TEST ? (GEAR_TEST ? 'survivor_save_open_gear' : 'survivor_save_open') : GEAR_TEST ? 'survivor_save_bosstest_gear' : BOSS_TEST ? 'survivor_save_bosstest' : 'survivor_save_v1';
+if (GEAR_TEST) document.title += GEARMAX ? ' + 상점 MAX' : ' + 장비';
+const SAVE_KEY = MAX_TEST ? 'survivor_save_maxtest' : GEARMAX ? 'survivor_save_shopmax' : OPEN_TEST ? (GEAR_TEST ? 'survivor_save_open_gear' : 'survivor_save_open') : GEAR_TEST ? 'survivor_save_bosstest_gear' : BOSS_TEST ? 'survivor_save_bosstest' : 'survivor_save_v1';
 const SV = { gold:0, best:0, bestKills:0, meta:{}, owned:{}, equip:{}, muted:false, fx:0 };
 const FX_LV = [1, .6, .3];   // 내 스킬 이펙트 밝기 단계 (SV.fx)
 function load() {
@@ -497,7 +501,7 @@ const GEAR = {
   glass:   { slot:'acc',    ico:'⏳', nm:'시간의 모래시계', cost:1200, st:{ cdr:.20, dash:.20 } },
 };
 // 만렙 테스트: 훈련 전부 MAX · 칸마다 가장 비싼(최고) 장비 장착
-if (MAX_TEST) {
+if (MAX_TEST || GEARMAX) {
   for (const k in META) SV.meta[k] = META[k].max;
   for (const sl in SLOTS) {
     let best = null;
@@ -510,7 +514,7 @@ if (MAX_TEST) {
   }
 }
 // 장비 보스 테스트: 1·2단계를 몇 판 돌면 살 수 있는 정도 (대검 · 사슬 갑옷 · 독수리의 눈 · 훈련 일부)
-if (GEAR_TEST) {
+if (GEAR_TEST && !GEARMAX) {
   SV.meta = { mhp:4, mdmg:4, mspd:2, mdash:1 };
   SV.equip = { weapon:'great', armor:'chain', acc:'eye' };
   if (GEAR5) {   // 5단계 도착 장비: 전설의 성검 · 사슬 갑옷 · 독수리의 눈 · 훈련 (체력6 피해6 속도3 대시2 부활1)
@@ -789,8 +793,8 @@ const BOSSES = {
   bone:   { nm:'해골 왕',     c:'#e8e2cf', r:52, hp:.45, spd:1,   pats:['rush','rings','summon'],  summon:['skul','zomb'], bc:['#f0e6c8','#ff9a6b'] },   // 첫 클리어가 너무 오래 걸려서 체력 .6 → .45
   spider: { nm:'거미 여왕',   c:'#3b8a4a', r:56, hp:.85, spd:1.1, pats:['spiral','wall','summon'], summon:['bat','wisp'],  bc:['#9cff6b','#e4ff3b'],
             ease:{ spiral:1.5, wall:1.3, gap:1.35 } },   // 탄막 패턴뿐이라 쉴 틈이 없음 → 나선 간격 1.5배 · 벽 간격 1.3배 · 빈틈 1.35배
-  golem:  { nm:'강철 골렘',   c:'#8a8f9c', r:66, hp:2.15, spd:.8, pats:['meteor','rush','rings','quake','boulder','magma'],  summon:[],              bc:['#ffb46b','#ff7040'],
-            ease:{ rest:.7, meteor:.7, rush:1, wind:.8, cornerRush:true, lvScale:true } },   // 쉴 틈이 많아 쉬움 → 체력 약 2배 (1.1 → 2.15) · 패턴 사이 휴식 0.7배 · 운석 간격 0.7배 · 돌진 +1회 · 돌진 전 멈춤 0.8배 · 대지 강타 · 바위 투척 · 용암 바둑판 추가 · 돌진은 플레이어가 구석에 있을 때만 · 레벨 따라 강해짐
+  golem:  { nm:'강철 골렘',   c:'#8a8f9c', r:66, hp:1.4, spd:.8, pats:['meteor','rush','rings','quake','boulder','magma'],  summon:[],              bc:['#ffb46b','#ff7040'],
+            ease:{ rest:.7, meteor:.7, rush:1, wind:.8, cornerRush:true, lvScale:true } },   // 쉴 틈이 많아 쉬움 → 체력 1.1 → 2.15 → 1.4 (5단계 보스보다 오래 걸려서 다시 줄임) · 패턴 사이 휴식 0.7배 · 운석 간격 0.7배 · 돌진 +1회 · 돌진 전 멈춤 0.8배 · 대지 강타 · 바위 투척 · 용암 바둑판 추가 · 돌진은 플레이어가 구석에 있을 때만 · 레벨 따라 강해짐
   eye:    { nm:'공허의 눈',   c:'#3a1f6b', r:54, hp:1.4, spd:1,   pats:['laser','blink','spiral','rings'], summon:[],      bc:['#7fd4ff','#4ff0ff'],
             ease:{ lzSpin:1.3, tp:1 } },   // 4단계치고 쉬움 → 원형 탄막 추가 · 레이저 회전 1.3배 · 순간이동 +1회
   lord:   { nm:'심야의 군주', c:'#8a2be2', r:58, hp:2.4, spd:1.1,
@@ -1131,7 +1135,7 @@ function spawnFinal() {
   const B = BOSSES[S.st.boss];
   // lvScale: 10분에 45레벨보다 높으면 1레벨마다 체력 +6% · 공격력 +1.5% (잘 키운 판도 보스는 어렵게)
   const over = B.ease && B.ease.lvScale ? Math.max(0, S.lvl - 45) : 0;
-  const hp = 7000 * tier * (1 + S.g/180) * B.hp * BOSS_HARD.hp * (1 + over*.06);
+  const hp = 7000 * tier * (1 + S.g/180) * B.hp * BOSS_HARD.hp * (1 + over*.06) * (SHOW ? 2 : 1);
   S.boss = {
     x:p.x, y:p.y - ARENA_H*.6, r:B.r, c:B.c, id:'final', boss:true, final:true, tier,
     kind:S.st.boss, nm:B.nm, pats:B.pats, summon:B.summon, bc:B.bc, ease:B.ease || {},
@@ -1177,6 +1181,12 @@ function nextPattern(e) {
     const A2 = S.arena, corner = Math.abs(S.p.x - A2.x) > A2.h*.55 && Math.abs(S.p.y - A2.y) > A2.h*.55;
     if (corner && list.includes('rush') && Math.random() < .75) { list = ['rush']; bossCall(e, '구석 돌진!'); }
     else list = list.filter(k => k !== 'rush');
+  }
+  if (SHOW) {   // 보스 쇼: 화려한 기술 위주 · 기술이 바뀔 때마다 보스 색 섬광 + 빛 고리
+    const big = list.filter(k => ['eclipse','stars','laser','spiral','meteor','magma','rings','quake'].includes(k));
+    if (big.length && Math.random() < .7) list = big;
+    S.flash = Math.max(S.flash, .3); S.flashC = showRgb(e.bc[e.enraged ? 1 : 0]); S.shake = Math.max(S.shake, 6);
+    (S.showFx ||= []).push({ x:e.x, y:e.y, r:0, max:360, l:.6, ml:.6, c:e.bc[e.enraged ? 1 : 0] });
   }
   if (e.forceEc) { list = ['eclipse']; e.forceEc = false; }   // 최후의 발악 직후엔 반드시 월식
   e.pat = e.last = list[Math.floor(Math.random()*list.length)];
@@ -1469,11 +1479,17 @@ function finalAI(e, a, d2p, dt) {
   if (e.marks) {
     for (let i = e.marks.length - 1; i >= 0; i--) {
       const m = e.marks[i];
-      if ((m.t -= dt) > 0) continue;
+      if ((m.t -= dt) > 0) {
+        if (m.star && m.t < STAR_FALL && Math.random() < .8) {   // 날아오는 별똥별 꼬리에서 별가루가 흩날림
+          const [hx, hy] = starHead(m);
+          S.parts.length < 900 && S.parts.push({ x:hx + rand(-6, 6), y:hy + rand(-6, 6), vx:rand(-30, 30), vy:rand(-10, 40), l:.5, ml:.5, c:Math.random() < .5 ? '#ffffff' : '#9fe6ff', sz:rand(2, 3.5) });
+        }
+        continue;
+      }
       e.marks.splice(i, 1);
       const mr = m.r || METEOR_R;
       if (m.star) {
-        (e.fx ||= []).push({ kind:'pillar', x:m.x, y:m.y, r:mr, l:.55, ml:.55 }, { kind:'moonwave', x:m.x, y:m.y, r:10, max:mr*1.8, l:.4, ml:.4 });
+        (e.fx ||= []).push({ kind:'starhit', x:m.x, y:m.y, r:mr, l:.5, ml:.5, rot:rand(0, TAU) }, { kind:'moonwave', x:m.x, y:m.y, r:10, max:mr*1.8, l:.4, ml:.4 });
         particles(m.x, m.y, 26, '#fff4c8', 360, .6, 4); particles(m.x, m.y, 14, '#7fd4ff', 260, .5, 3);
         const nb = e.frenzied ? 10 : 8, off = rand(0, TAU);
         for (let k = 0; k < nb; k++) { const th = off + k*TAU/nb;
@@ -1483,6 +1499,10 @@ function finalAI(e, a, d2p, dt) {
         if (dist2(m, S.p) < (mr + S.p.r)**2) hurtPlayer(e.dmg*.75);
         continue;
       }
+      if (e.kind === 'lord') {   // 심야의 군주: 보라 수정 운석이 깨지며 파편 + 충격 고리
+        particles(m.x, m.y, 16, '#b05cff', 260, .5, 4); particles(m.x, m.y, 8, '#ffffff', 200, .3, 3); particles(m.x, m.y, 6, '#ff6bd5', 300, .4, 3);
+        (e.fx ||= []).push({ kind:'voidhit', x:m.x, y:m.y, r:mr, l:.4, ml:.4, rot:rand(0, TAU) });
+      } else
       particles(m.x, m.y, m.magma ? 8 : m.crack ? 10 : 18, m.magma ? '#ff5a1a' : '#ff8a3d', m.magma ? 300 : 240, .45, 4);
       if (e.kind === 'golem') {   // 강철 골렘: 폭발 섬광 · 그을린 자국 · 돌 파편
         particles(m.x, m.y, m.crack || m.magma ? 6 : 12, '#ffe08a', 340, .3, 3);
@@ -1749,12 +1769,179 @@ function drawEclipse(e) {
   ctx.restore();
 }
 // 결투 패턴 예고 그리기 (운석 원 · 레이저 · 순간이동 도착 지점)
+// ═══ 보스 쇼 (?show=1) — 보스 고유 색(e.c 몸 · e.bc 탄 색 2개)으로만 꾸밈 ═══
+function showRgb(hex) {   // '#rrggbb' → 'r,g,b'
+  const n = parseInt(hex.slice(1), 16);
+  return `${n >> 16 & 255},${n >> 8 & 255},${n & 255}`;
+}
+function showCols(e) { const ph = e.frenzied ? 1 : e.enraged ? 1 : 0; return [e.bc[ph], e.bc[1 - ph], e.c]; }
+function showTrail(e, dt) {   // 보스 주위로 피어오르는 불씨 · 1.6초마다 맥동 고리
+  e.showT = (e.showT || 0) + dt;
+  const [c1, c2] = showCols(e);
+  if (Math.random() < .7) {
+    const a = rand(0, TAU), rr = e.r*rand(.7, 1.3);
+    S.parts.length < 900 && S.parts.push({ x:e.x + Math.cos(a)*rr, y:e.y + Math.sin(a)*rr, vx:rand(-15, 15), vy:rand(-70, -30),
+      l:1, ml:1, c:Math.random() < .25 ? '#ffffff' : Math.random() < .5 ? c1 : c2, sz:rand(2, 4) });
+  }
+  if (e.showT > 1.6) { e.showT = 0; (S.showFx ||= []).push({ x:e.x, y:e.y, r:0, max:e.r*5, l:1, ml:1, c:c1 }); }
+}
+function updateShowFx(dt) {   // 퍼지는 고리 (보스가 죽은 뒤 피날레에도 움직이게 따로 갱신)
+  for (let i = (S.showFx || []).length - 1; i >= 0; i--) {
+    const f = S.showFx[i]; f.l -= dt; f.r = f.max*(1 - Math.pow(f.l/f.ml, 2));
+    if (f.l <= 0) S.showFx.splice(i, 1);
+  }
+}
+function drawShowRings() {
+  if (!S.showFx || !S.showFx.length) return;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const f of S.showFx) {
+    const k = f.l/f.ml;
+    ctx.globalAlpha = k*.7; ctx.strokeStyle = f.c; ctx.lineWidth = 5*k + 1;
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = k*.35; ctx.lineWidth = 1; ctx.strokeStyle = '#ffffff';   // 안쪽 가는 흰 선
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r*.92, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawShowBorder(x0, y0, sz, e) {   // 결투장 테두리를 따라 도는 빛 두 줄기 (꼬리 달린 혜성)
+  const [c1] = showCols(e), per = sz*4;
+  const at = d => { d = ((d % per) + per) % per; const s2 = Math.floor(d/sz), u = d - s2*sz;
+    return s2 === 0 ? [x0 + u, y0] : s2 === 1 ? [x0 + sz, y0 + u] : s2 === 2 ? [x0 + sz - u, y0 + sz] : [x0, y0 + sz - u]; };
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = c1;
+  for (const off of [0, per/2]) for (let i = 0; i < 18; i++) {
+    const [x, y] = at(S.t*520 + off - i*14);
+    ctx.globalAlpha = (1 - i/18)*.9;
+    ctx.beginPath(); ctx.arc(x, y, 7 - i*.3, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawShowAura(e) {
+  const A2 = S.arena, t = S.t, hp = e.hp/e.maxhp, [c1, c2, cb] = showCols(e);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // 결투장 바닥: 룬 눈금이 새겨진 마법진 3겹 (서로 반대로 회전)
+  ctx.save(); ctx.translate(A2.x, A2.y);
+  for (let k = 0; k < 3; k++) {
+    const R0 = A2.h*(.9 - k*.25), n = 5 + k*2, rot = t*(.1 + k*.07)*(k % 2 ? 1 : -1);
+    ctx.save(); ctx.rotate(rot);
+    ctx.strokeStyle = k === 1 ? c2 : c1; ctx.globalAlpha = .18; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, R0, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, R0 - 14, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = .3; ctx.lineWidth = 2;
+    for (let i = 0; i < 48; i++) {   // 두 원 사이 룬 눈금: 길이·모양이 조금씩 다름
+      const th = i*TAU/48, a1 = R0 - 3, a2 = R0 - (i % 4 ? 8 : 12);
+      ctx.beginPath(); ctx.moveTo(Math.cos(th)*a1, Math.sin(th)*a1); ctx.lineTo(Math.cos(th)*a2, Math.sin(th)*a2); ctx.stroke();
+      if (i % 6 === 0) { ctx.beginPath(); ctx.arc(Math.cos(th)*(R0 - 7), Math.sin(th)*(R0 - 7), 2.5, 0, TAU); ctx.stroke(); }
+    }
+    ctx.globalAlpha = .14; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {   // 별 모양 (꼭짓점을 하나씩 건너뛰며 잇기)
+      const th = i*2*TAU/n;
+      if (i) ctx.lineTo(Math.cos(th)*(R0 - 14), Math.sin(th)*(R0 - 14)); else ctx.moveTo(Math.cos(th)*(R0 - 14), Math.sin(th)*(R0 - 14));
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+  // 보스 뒤 은은한 빛줄기 8갈래 (천천히 숨쉬듯)
+  ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(t*.35);
+  for (let i = 0; i < 8; i++) {
+    const th = i*TAU/8, L = e.r*(3.6 + .8*Math.sin(t*2 + i*1.7)), w = .07;
+    const gr = ctx.createLinearGradient(0, 0, Math.cos(th)*L, Math.sin(th)*L);
+    gr.addColorStop(0, i % 2 ? c2 : c1); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gr; ctx.globalAlpha = .28;
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(th - w)*L, Math.sin(th - w)*L); ctx.lineTo(Math.cos(th + w)*L, Math.sin(th + w)*L);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  // 후광 + 기울어진 궤도 고리 2개 (위에 작은 빛점이 달림)
+  const halo = ctx.createRadialGradient(e.x, e.y, e.r*.6, e.x, e.y, e.r*2.6);
+  halo.addColorStop(0, cb); halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = .35; ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(e.x, e.y, e.r*2.6, 0, TAU); ctx.fill();
+  for (let k = 0; k < 2; k++) {
+    const tilt = k ? .9 : -.6, RR = e.r*(1.55 + k*.4), sp = t*(1.4 + k*.6)*(k ? -1 : 1);
+    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(tilt); ctx.scale(1, .32);
+    ctx.globalAlpha = .55; ctx.strokeStyle = k ? c2 : c1; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, RR, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.shadowBlur = 14; ctx.shadowColor = k ? c2 : c1;
+    for (let j = 0; j < 3; j++) { const a = sp + j*TAU/3; ctx.beginPath(); ctx.arc(Math.cos(a)*RR, Math.sin(a)*RR, 5, 0, TAU); ctx.fill(); }
+    ctx.restore();
+  }
+  // 주위를 도는 작은 결정 6개 (체력이 줄수록 빨라짐)
+  for (let i = 0; i < 6; i++) {
+    const a = t*(1 + (1 - hp)*2) + i*TAU/6, rr = e.r*(2.2 + .15*Math.sin(t*3 + i));
+    const x = e.x + Math.cos(a)*rr, y = e.y + Math.sin(a)*rr*.8, z = 7;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a*2);
+    ctx.globalAlpha = .9; ctx.fillStyle = i % 2 ? c2 : c1; ctx.shadowBlur = 12; ctx.shadowColor = ctx.fillStyle;
+    ctx.beginPath(); ctx.moveTo(0, -z*1.5); ctx.lineTo(z*.7, 0); ctx.lineTo(0, z*1.5); ctx.lineTo(-z*.7, 0); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = .9; ctx.fillStyle = '#ffffff'; ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.moveTo(0, -z*.8); ctx.lineTo(z*.3, 0); ctx.lineTo(0, z*.8); ctx.lineTo(-z*.3, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+// 성좌 낙하 별똥별: 떨어지기 STAR_FALL초 전부터 오른쪽 위 하늘에서 비스듬히 날아와 표식에 정확히 꽂힘 (피하는 타이밍은 그대로)
+const STAR_FALL = .6;
+function starHead(m) {
+  const a = -1.15 + (m.si % 5)*.08, L = 680, u = clamp(m.t/STAR_FALL, 0, 1), uu = u*u;   // 처음엔 빠르게, 꽂히기 직전엔 더 빠르게 (가속)
+  return [m.x + Math.cos(a)*L*uu, m.y + Math.sin(a)*L*uu, a];
+}
+function drawFallingStar(m) {
+  const [hx, hy, a] = starHead(m), u = clamp(m.t/STAR_FALL, 0, 1), tl = 150 + (1 - u)*120;
+  const tx = hx + Math.cos(a)*tl, ty = hy + Math.sin(a)*tl;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+  // 꼬리: 바깥 푸른 빛 + 안쪽 흰 심지 (머리 쪽이 굵고 밝음)
+  const g1 = ctx.createLinearGradient(hx, hy, tx, ty);
+  g1.addColorStop(0, 'rgba(160,220,255,.75)'); g1.addColorStop(1, 'rgba(120,180,255,0)');
+  ctx.strokeStyle = g1; ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke();
+  const g2 = ctx.createLinearGradient(hx, hy, tx*.4 + hx*.6, ty*.4 + hy*.6);
+  g2.addColorStop(0, 'rgba(255,255,255,.95)'); g2.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.strokeStyle = g2; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx*.4 + hx*.6, ty*.4 + hy*.6); ctx.stroke();
+  // 머리: 빛무리 + 반짝이며 도는 오각별
+  const gh = ctx.createRadialGradient(hx, hy, 0, hx, hy, 30);
+  gh.addColorStop(0, 'rgba(255,255,255,.95)'); gh.addColorStop(.4, 'rgba(170,225,255,.5)'); gh.addColorStop(1, 'rgba(120,200,255,0)');
+  ctx.fillStyle = gh; ctx.beginPath(); ctx.arc(hx, hy, 30, 0, TAU); ctx.fill();
+  ctx.translate(hx, hy); ctx.rotate(S.t*9 + m.si);
+  ctx.fillStyle = '#fffbe8'; ctx.beginPath();
+  for (let q = 0; q < 10; q++) { const rr = q % 2 ? 5 : 13, th = q*Math.PI/5; ctx.lineTo(Math.cos(th)*rr, Math.sin(th)*rr); }
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+// 심야의 군주 운석: 떨어지기 VOID_FALL초 전부터 왼쪽 위 하늘에서 보라 불꽃을 끌며 떨어지는 수정 (피하는 타이밍은 그대로)
+const VOID_FALL = .45;
+function drawVoidMeteor(m) {
+  const u = clamp(m.t/VOID_FALL, 0, 1), hgt = u*u*560, hx = m.x - hgt*.4, hy = m.y - hgt;
+  const tx = hx - 70, ty = hy - 190;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+  const g1 = ctx.createLinearGradient(hx, hy, tx, ty);   // 꼬리: 보라 불꽃 + 분홍 심지
+  g1.addColorStop(0, 'rgba(180,90,255,.85)'); g1.addColorStop(1, 'rgba(120,40,220,0)');
+  ctx.strokeStyle = g1; ctx.lineWidth = 20; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke();
+  const g2 = ctx.createLinearGradient(hx, hy, hx*.5 + tx*.5, hy*.5 + ty*.5);
+  g2.addColorStop(0, 'rgba(255,160,235,.9)'); g2.addColorStop(1, 'rgba(255,120,220,0)');
+  ctx.strokeStyle = g2; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx*.5 + tx*.5, hy*.5 + ty*.5); ctx.stroke();
+  const gh = ctx.createRadialGradient(hx, hy, 0, hx, hy, 34);   // 머리 주변 보라 빛무리
+  gh.addColorStop(0, 'rgba(230,180,255,.8)'); gh.addColorStop(1, 'rgba(140,50,255,0)');
+  ctx.fillStyle = gh; ctx.beginPath(); ctx.arc(hx, hy, 34, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.translate(hx, hy); ctx.rotate(S.t*6 + m.x);   // 머리: 빙글 도는 검보라 수정
+  ctx.shadowBlur = 16; ctx.shadowColor = '#b05cff';
+  ctx.fillStyle = '#3a1460';
+  ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(11, -4); ctx.lineTo(7, 14); ctx.lineTo(-8, 13); ctx.lineTo(-12, -3); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0; ctx.fillStyle = '#d9a6ff';
+  ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(11, -4); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#8a3cd9';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(11, -4); ctx.lineTo(7, 14); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
 function drawBossFx() {
   const e = S.arena && S.boss && S.boss.final ? S.boss : null;
   if (!e) return;
   const golem = e.kind === 'golem';
   if (e.pat === 'eclipse') drawEclipse(e);
   if (e.kind === 'lord') drawLordAura(e);
+  if (SHOW) drawShowAura(e);
   for (const f of e.fx || []) if (f.kind === 'scorch') {   // 그을린 땅 + 식어가는 용암
     const k = f.l/f.ml;
     ctx.fillStyle = `rgba(20,10,6,${.55*k})`;
@@ -1781,12 +1968,7 @@ function drawBossFx() {
       for (let p = 0; p < 10; p++) { const rr = p % 2 ? 7 : 17 + kk*6, th = p*Math.PI/5; ctx.lineTo(Math.cos(th)*rr, Math.sin(th)*rr); }
       ctx.closePath(); ctx.fill();
       ctx.restore();
-      if (m.t < .35) {   // 내려오는 빛줄기
-        const a = 1 - m.t/.35;
-        ctx.save(); ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = `rgba(180,230,255,${.5*a})`; ctx.fillRect(m.x - 6 - a*10, m.y - 700, 12 + a*20, 700);
-        ctx.restore();
-      }
+      if (m.t < STAR_FALL) drawFallingStar(m);   // 하늘에서 비스듬히 날아오는 별똥별
       continue;
     }
     if (m.magma) {   // 용암 칸: 차례가 되면 바닥이 달아오르고 부글부글 끓음
@@ -1808,6 +1990,18 @@ function drawBossFx() {
       ctx.beginPath(); ctx.moveTo(m.x - c*30 - s*6, m.y - s*30 + c*6); ctx.lineTo(m.x + s*5, m.y - c*5); ctx.lineTo(m.x + c*30 - s*4, m.y + s*30 + c*4); ctx.stroke();
       ctx.fillStyle = `rgba(255,80,20,${.08 + k*.22})`;
       ctx.beginPath(); ctx.arc(m.x, m.y, mr, 0, TAU); ctx.fill();
+      continue;
+    }
+    if (e.kind === 'lord') {   // 심야의 군주: 보라 예고 원 + 도는 룬 고리 + 하늘에서 떨어지는 보라 수정 운석
+      ctx.fillStyle = `rgba(150,60,255,${.1 + k*.28})`;
+      ctx.beginPath(); ctx.arc(m.x, m.y, mr*k, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(200,120,255,.85)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(m.x, m.y, mr, 0, TAU); ctx.stroke();
+      ctx.save(); ctx.translate(m.x, m.y); ctx.rotate(S.t*1.5 + m.x*.01);
+      ctx.strokeStyle = `rgba(255,140,230,${.3 + k*.5})`; ctx.setLineDash([8, 10]);
+      ctx.beginPath(); ctx.arc(0, 0, mr*.72, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+      ctx.restore();
+      if (m.t < VOID_FALL) drawVoidMeteor(m);
       continue;
     }
     ctx.fillStyle = `rgba(255,110,40,${.1 + k*.25})`;
@@ -1870,6 +2064,38 @@ function drawBossFx() {
       ctx.strokeStyle = `rgba(200,110,255,${.7*k})`; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(f.x, f.y, f.r*.85, 0, TAU); ctx.stroke();
       ctx.shadowBlur = 0;
+    } else if (f.kind === 'voidhit') {   // 보라 운석 충돌: 보라 섬광 + 퍼지는 고리 + 수정 조각 빛살
+      const w = f.r*(1.25 - .45*k);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(f.x, f.y);
+      const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, w);
+      gl.addColorStop(0, `rgba(255,235,255,${.85*k})`); gl.addColorStop(.4, `rgba(180,80,255,${.55*k})`); gl.addColorStop(1, 'rgba(120,40,220,0)');
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, 0, w, 0, TAU); ctx.fill();
+      ctx.strokeStyle = `rgba(255,120,230,${.8*k})`; ctx.lineWidth = 2 + 4*k;
+      ctx.beginPath(); ctx.arc(0, 0, f.r*(1.5 - k*.7), 0, TAU); ctx.stroke();
+      ctx.rotate(f.rot); ctx.fillStyle = `rgba(220,170,255,${.8*k})`;
+      for (let i = 0; i < 6; i++) {
+        const th = i*TAU/6, L = f.r*(1.1 - .3*k);
+        ctx.beginPath(); ctx.moveTo(Math.cos(th - .12)*6, Math.sin(th - .12)*6);
+        ctx.lineTo(Math.cos(th)*L, Math.sin(th)*L); ctx.lineTo(Math.cos(th + .12)*6, Math.sin(th + .12)*6); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    } else if (f.kind === 'starhit') {   // 별이 꽂힌 자리: 하얀 섬광 + 사방으로 뻗는 빛살 + 바닥에 남는 별 자국
+      const w = f.r*(1.3 - .5*k);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(f.x, f.y);
+      const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, w*1.2);
+      gl.addColorStop(0, `rgba(255,255,255,${.9*k})`); gl.addColorStop(.35, `rgba(170,225,255,${.5*k})`); gl.addColorStop(1, 'rgba(120,200,255,0)');
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, 0, w*1.2, 0, TAU); ctx.fill();
+      ctx.rotate(f.rot);
+      ctx.fillStyle = `rgba(235,248,255,${.85*k})`;
+      for (let i = 0; i < 8; i++) {   // 긴 빛살 4개 + 짧은 빛살 4개
+        const L = (i % 2 ? .9 : 1.9)*f.r*(1.4 - .4*k), th = i*TAU/8;
+        ctx.beginPath(); ctx.moveTo(Math.cos(th - .08)*8, Math.sin(th - .08)*8);
+        ctx.lineTo(Math.cos(th)*L, Math.sin(th)*L); ctx.lineTo(Math.cos(th + .08)*8, Math.sin(th + .08)*8); ctx.closePath(); ctx.fill();
+      }
+      ctx.fillStyle = `rgba(255,250,220,${.6*k})`; ctx.beginPath();
+      for (let q = 0; q < 10; q++) { const rr = q % 2 ? 9 : 24, th = q*Math.PI/5 - Math.PI/2; ctx.lineTo(Math.cos(th)*rr, Math.sin(th)*rr); }
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
     } else if (f.kind === 'pillar') {   // 하늘에서 내리꽂힌 빛기둥
       const w = f.r*(.5 + .7*k);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -2203,6 +2429,16 @@ function killEnemy(e) {
       }, i*170);
       particles(ex, ey, 160, '#ffe9a8', 560, 1.2, 6); particles(ex, ey, 100, '#c27bff', 480, 1, 5);
     }
+    if (SHOW) {   // 보스 쇼 피날레: 보스 색 불꽃놀이 24발
+      S.clearT = Math.max(S.clearT, 6); const ex = e.x, ey = e.y, cols = [e.c, e.bc[0], e.bc[1], '#ffe9a8', '#ffffff'];
+      for (let i = 0; i < 24; i++) setTimeout(() => {
+        const x = ex + rand(-360, 360), y = ey + rand(-280, 280), c = cols[i % cols.length];
+        particles(x, y, 44, c, 440, 1.1, 5); particles(x, y, 14, '#ffffff', 240, .6, 3);
+        (S.showFx ||= []).push({ x, y, r:0, max:rand(110, 200), l:.7, ml:.7, c });
+        S.flash = .25; S.flashC = showRgb(c); S.shake = Math.max(S.shake, 9);
+        tone(500 + (i % 8)*110, .25, 'sine', .04, 900);
+      }, 200 + i*140);
+    }
     for (let k = 0; k < 40; k++) dropCoin(e.x + rand(-90,90), e.y + rand(-90,90));
     for (const g of S.gems) g.vac = true;
     for (const o of S.enemies) particles(o.x, o.y, 6, o.c, 120, .4, 3);
@@ -2258,6 +2494,7 @@ function dropCoin(x, y) {
 }
 function hurtPlayer(amount) {
   if (S.p.inv > 0 || S.p.dead) return;
+  if (SHOW && S.arena) { particles(S.p.x, S.p.y, 4, '#ffffff', 160, .3, 2); return; }   // 보스 쇼: 구경용이라 안 맞음
   amount *= (1 - (S.up.armor||0)*0.07) * (1 - gs('def')) * (1 - hero().def) * (S.curse > 0 ? 1.25 : 1);
   S.p.hp -= amount;
   if (isMax('armor')) {   // 방어구 만렙: 반격 충격파
@@ -2436,6 +2673,7 @@ function update(dt) {
 
   p.inv = Math.max(0, p.inv - dt);  S.shake = Math.max(0, S.shake - dt*36);
   S.flash = Math.max(0, S.flash - dt*2.2);
+  if (SHOW) updateShowFx(dt);
   S.cam.x += (p.x - S.cam.x) * Math.min(1, dt*8);
   S.cam.y += (p.y - S.cam.y) * Math.min(1, dt*8);
 
@@ -2553,6 +2791,7 @@ function update(dt) {
     if (e.slow > 0) { e.slow -= dt; e.spd *= e.slowMul; }
 
     if (e.final) finalAI(e, a, d2p, dt);
+    if (e.final && SHOW) showTrail(e, dt);
     else if (e.boss) {
       // 중간 보스 패턴: 탄막 + 돌진
       e.atkCd -= dt; e.rushCd -= dt;
@@ -2805,6 +3044,7 @@ function render() {
     ctx.lineWidth = 5; ctx.shadowBlur = 24; ctx.shadowColor = '#a24bff';
     ctx.strokeRect(x0, y0, sz, sz);
     ctx.shadowBlur = 0;
+    if (SHOW && S.boss) drawShowBorder(x0, y0, sz, S.boss);
     ctx.fillStyle = '#d79bff';   // 네 모서리 기둥
     for (const [cx, cy] of [[x0,y0],[x0+sz,y0],[x0,y0+sz],[x0+sz,y0+sz]]) ctx.fillRect(cx - 9, cy - 9, 18, 18);
   }
@@ -2846,6 +3086,7 @@ function render() {
   }
   ctx.globalAlpha = 1;
   drawBossFx();
+  if (SHOW) drawShowRings();
 
   // 맵 장애물
   for (const o of S.obs || []) if (onScreen(o, o.r + 30)) drawObstacle(o);
@@ -3161,7 +3402,7 @@ function render() {
   ctx.globalAlpha = 1;
 
   // 적 탄: 맨 위에, 검은 테두리 + 흰 심지로 어떤 이펙트 위에서도 보이게
-  const lordGlow = S.arena && S.boss && S.boss.kind === 'lord';
+  const lordGlow = S.arena && S.boss && (S.boss.kind === 'lord' || SHOW);
   for (const b of S.ebullets) {
     if (!onScreen(b, b.r + 10)) continue;
     if (lordGlow) {   // 심야의 군주 탄: 반짝이는 별빛 후광 + 빛 꼬리
@@ -3181,6 +3422,16 @@ function render() {
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r*.45, 0, TAU); ctx.fill();
+    if (SHOW && S.arena) {   // 보스 쇼: 탄마다 돌아가는 십자 반짝임
+      const sp = b.r*(1.6 + .5*Math.sin(S.t*10 + b.x*.07)), ra = S.t*3 + b.y*.02;
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .7;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(b.x + Math.cos(ra)*sp, b.y + Math.sin(ra)*sp); ctx.lineTo(b.x - Math.cos(ra)*sp, b.y - Math.sin(ra)*sp);
+      ctx.moveTo(b.x - Math.sin(ra)*sp*.6, b.y + Math.cos(ra)*sp*.6); ctx.lineTo(b.x + Math.sin(ra)*sp*.6, b.y - Math.cos(ra)*sp*.6);
+      ctx.stroke();
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    }
   }
   ctx.restore();
 
